@@ -1,9 +1,11 @@
+from __future__ import annotations
+from typing import Optional, Dict, Any
 import hashlib
 import random
 import time
 
 
-class SpiderFootEvent():
+class SpiderFootEvent:
     """SpiderFootEvent object representing identified data and associated meta data.
 
     Attributes:
@@ -22,20 +24,20 @@ class SpiderFootEvent():
         __id (str): Unique ID of the event, generated using eventType, generated, module, and a random integer
     """
 
-    _generated = None
-    _eventType = None
-    _confidence = None
-    _visibility = None
-    _risk = None
-    _module = None
-    _data = None
-    _sourceEvent = None
-    _sourceEventHash = None
-    _moduleDataSource = None
-    _actualSource = None
-    __id = None
+    _generated: Optional[float] = None
+    _eventType: Optional[str] = None
+    _confidence: Optional[int] = None
+    _visibility: Optional[int] = None
+    _risk: Optional[int] = None
+    _module: Optional[str] = None
+    _data: Optional[str] = None
+    _sourceEvent: Optional[SpiderFootEvent] = None
+    _sourceEventHash: Optional[str] = None
+    _moduleDataSource: Optional[str] = None
+    _actualSource: Optional[str] = None
+    __id: Optional[str] = None
 
-    def __init__(self, eventType: str, data: str, module: str, sourceEvent: 'SpiderFootEvent') -> None:
+    def __init__(self, eventType: str, data: str, module: str, sourceEvent: SpiderFootEvent) -> None:
         """Initialize SpiderFoot event object.
 
         Args:
@@ -108,7 +110,7 @@ class SpiderFootEvent():
         return self._data
 
     @property
-    def sourceEvent(self) -> 'SpiderFootEvent':
+    def sourceEvent(self) -> Optional[SpiderFootEvent]:
         return self._sourceEvent
 
     @property
@@ -251,7 +253,7 @@ class SpiderFootEvent():
         self._data = data
 
     @sourceEvent.setter
-    def sourceEvent(self, sourceEvent: 'SpiderFootEvent') -> None:
+    def sourceEvent(self, sourceEvent: SpiderFootEvent) -> None:
         """Source event which lead to this event.
 
         Args:
@@ -281,7 +283,7 @@ class SpiderFootEvent():
     def moduleDataSource(self, moduleDataSource: str) -> None:
         self._moduleDataSource = moduleDataSource
 
-    def asDict(self) -> dict:
+    def asDict(self) -> Dict[str, Any]:
         """Event object as dictionary.
 
         Returns:

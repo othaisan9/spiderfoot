@@ -148,26 +148,47 @@ class SpiderFootHelpers():
                             "Public Registries", "Real World", "Reputation Systems",
                             "Search Engines", "Secondary Networks", "Social Media"]
 
-        for filename in os.listdir(path):
-            if not filename.startswith("sfp_"):
+        # Walk through the modules directory and subdirectories
+        for root, dirs, files in os.walk(path):
+            # Skip archived modules directory
+            if 'archived_modules' in root:
                 continue
-            if not filename.endswith(".py"):
-                continue
-            if filename in ignore_files:
-                continue
+                
+            for filename in files:
+                if not filename.startswith("sfp_"):
+                    continue
+                if not filename.endswith(".py"):
+                    continue
+                if filename in ignore_files:
+                    continue
 
-            modName = filename.split('.')[0]
-            sfModules[modName] = dict()
-            mod = __import__('modules.' + modName, globals(), locals(), [modName])
-            sfModules[modName]['object'] = getattr(mod, modName)()
-            mod_dict = sfModules[modName]['object'].asdict()
-            sfModules[modName].update(mod_dict)
+                modName = filename.split('.')[0]
+                sfModules[modName] = dict()
+                
+                # Calculate the module import path relative to modules directory
+                rel_path = os.path.relpath(root, path)
+                if rel_path == '.':
+                    import_path = f'modules.{modName}'
+                else:
+                    import_path = f'modules.{rel_path.replace(os.sep, ".")}.{modName}'
+                
+                try:
+                    mod = __import__(import_path, globals(), locals(), [modName])
+                    sfModules[modName]['object'] = getattr(mod, modName)()
+                    mod_dict = sfModules[modName]['object'].asdict()
+                    sfModules[modName].update(mod_dict)
+                    
+                    if len(sfModules[modName]['cats']) > 1:
+                        raise SyntaxError(f"Module {modName} has multiple categories defined but only one is supported.")
 
-            if len(sfModules[modName]['cats']) > 1:
-                raise SyntaxError(f"Module {modName} has multiple categories defined but only one is supported.")
-
-            if sfModules[modName]['cats'] and sfModules[modName]['cats'][0] not in valid_categories:
-                raise SyntaxError(f"Module {modName} has invalid category '{sfModules[modName]['cats']}'.")
+                    if sfModules[modName]['cats'] and sfModules[modName]['cats'][0] not in valid_categories:
+                        raise SyntaxError(f"Module {modName} has invalid category '{sfModules[modName]['cats']}'.")
+                        
+                except ImportError as e:
+                    # Skip modules that can't be imported
+                    print(f"Warning: Could not import module {modName}: {e}")
+                    del sfModules[modName]
+                    continue
 
         return sfModules
 

@@ -10,13 +10,18 @@
 # Licence:     MIT
 # -------------------------------------------------------------------------------
 
+from __future__ import annotations
 from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple, Union, TYPE_CHECKING
 import hashlib
 import random
 import re
 import sqlite3
 import threading
 import time
+
+if TYPE_CHECKING:
+    from spiderfoot import SpiderFootEvent
 
 
 class SpiderFootDb:
@@ -25,17 +30,17 @@ class SpiderFootDb:
     Attributes:
         conn: SQLite connect() connection
         dbh: SQLite cursor() database handle
-        dbhLock (_thread.RLock): thread lock on database handle
+        dbhLock: thread lock on database handle
     """
 
-    dbh = None
-    conn = None
+    dbh: Optional[sqlite3.Cursor] = None
+    conn: Optional[sqlite3.Connection] = None
 
     # Prevent multithread access to sqlite database
-    dbhLock = threading.RLock()
+    dbhLock: threading.RLock = threading.RLock()
 
     # Queries for creating the SpiderFoot database
-    createSchemaQueries = [
+    createSchemaQueries: List[str] = [
         "PRAGMA journal_mode=WAL",
         "CREATE TABLE tbl_event_types ( \
             event       VARCHAR NOT NULL PRIMARY KEY, \
@@ -108,7 +113,7 @@ class SpiderFootDb:
         "CREATE INDEX idx_scan_correlation_events ON tbl_scan_correlation_results_events (correlation_id)"
     ]
 
-    eventDetails = [
+    eventDetails: List[List[Union[str, int]]] = [
         ['ROOT', 'Internal SpiderFoot Root event', 1, 'INTERNAL'],
         ['ACCOUNT_EXTERNAL_OWNED', 'Account on External Site', 0, 'ENTITY'],
         ['ACCOUNT_EXTERNAL_OWNED_COMPROMISED', 'Hacked Account on External Site', 0, 'DESCRIPTOR'],
@@ -445,7 +450,7 @@ class SpiderFootDb:
                 raise IOError("SQL error encountered when vacuuming the database") from e
         return False
 
-    def search(self, criteria: dict, filterFp: bool = False) -> list:
+    def search(self, criteria: Dict[str, str], filterFp: bool = False) -> List[Tuple[Any, ...]]:
         """Search database.
 
         Args:
@@ -528,7 +533,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching search results") from e
 
-    def eventTypes(self) -> list:
+    def eventTypes(self) -> List[Tuple[str, str, int, str]]:
         """Get event types.
 
         Returns:
@@ -546,7 +551,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when retrieving event types") from e
 
-    def scanLogEvents(self, batch: list) -> bool:
+    def scanLogEvents(self, batch: List[Tuple[str, str, str, str]]) -> bool:
         """Logs a batch of events to the database.
 
         Args:
@@ -592,7 +597,7 @@ class SpiderFootDb:
                     return False
         return True
 
-    def scanLogEvent(self, instanceId: str, classification: str, message: str, component: str = None) -> None:
+    def scanLogEvent(self, instanceId: str, classification: str, message: str, component: Optional[str] = None) -> None:
         """Log an event to the database.
 
         Args:
@@ -716,7 +721,7 @@ class SpiderFootDb:
             except sqlite3.Error:
                 raise IOError("Unable to set information for the scan instance.") from None
 
-    def scanInstanceGet(self, instanceId: str) -> list:
+    def scanInstanceGet(self, instanceId: str) -> Optional[List[Any]]:
         """Return info about a scan instance (name, target, created, started, ended, status)
 
         Args:
@@ -745,7 +750,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when retrieving scan instance") from e
 
-    def scanResultSummary(self, instanceId: str, by: str = "type") -> list:
+    def scanResultSummary(self, instanceId: str, by: str = "type") -> List[Tuple[str, int]]:
         """Obtain a summary of the results, filtered by event type, module or entity.
 
         Args:
@@ -799,7 +804,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching result summary") from e
 
-    def scanCorrelationSummary(self, instanceId: str, by: str = "rule") -> list:
+    def scanCorrelationSummary(self, instanceId: str, by: str = "rule") -> List[Tuple[str, str, int]]:
         """Obtain a summary of the correlations, filtered by rule or risk
 
         Args:
@@ -844,7 +849,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching correlation summary") from e
 
-    def scanCorrelationList(self, instanceId: str) -> list:
+    def scanCorrelationList(self, instanceId: str) -> List[Dict[str, Any]]:
         """Obtain a list of the correlations from a scan
 
         Args:
@@ -974,7 +979,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching result events") from e
 
-    def scanResultEventUnique(self, instanceId: str, eventType: str = 'ALL', filterFp: bool = False) -> list:
+    def scanResultEventUnique(self, instanceId: str, eventType: str = 'ALL', filterFp: bool = False) -> List[Tuple[Any, ...]]:
         """Obtain a unique list of elements.
 
         Args:
@@ -1016,7 +1021,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching unique result events") from e
 
-    def scanLogs(self, instanceId: str, limit: int = None, fromRowId: int = 0, reverse: bool = False) -> list:
+    def scanLogs(self, instanceId: str, limit: Optional[int] = None, fromRowId: int = 0, reverse: bool = False) -> List[Tuple[int, float, str, str, str]]:
         """Get scan logs.
 
         Args:
@@ -1062,7 +1067,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching scan logs") from e
 
-    def scanErrors(self, instanceId: str, limit: int = 0) -> list:
+    def scanErrors(self, instanceId: str, limit: int = 0) -> List[Tuple[int, float, str, str, str]]:
         """Get scan errors.
 
         Args:
@@ -1134,7 +1139,7 @@ class SpiderFootDb:
 
         return True
 
-    def scanResultsUpdateFP(self, instanceId: str, resultHashes: list, fpFlag: int) -> bool:
+    def scanResultsUpdateFP(self, instanceId: str, resultHashes: List[str], fpFlag: int) -> bool:
         """Set the false positive flag for a result.
 
         Args:
@@ -1173,7 +1178,7 @@ class SpiderFootDb:
 
         return True
 
-    def configSet(self, optMap: dict = {}) -> bool:
+    def configSet(self, optMap: Dict[str, str] = {}) -> bool:
         """Store the default configuration in the database.
 
         Args:
@@ -1217,7 +1222,7 @@ class SpiderFootDb:
 
         return True
 
-    def configGet(self) -> dict:
+    def configGet(self) -> Dict[str, str]:
         """Retreive the config from the database
 
         Returns:
@@ -1261,7 +1266,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("Unable to clear configuration from the database") from e
 
-    def scanConfigSet(self, scan_id, optMap=dict()) -> None:
+    def scanConfigSet(self, scan_id: str, optMap: Dict[str, Any] = {}) -> None:
         """Store a configuration value for a scan.
 
         Args:
@@ -1302,7 +1307,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when storing config, aborting") from e
 
-    def scanConfigGet(self, instanceId: str) -> dict:
+    def scanConfigGet(self, instanceId: str) -> Dict[str, Any]:
         """Retrieve configuration data for a scan component.
 
         Args:
@@ -1337,7 +1342,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching configuration") from e
 
-    def scanEventStore(self, instanceId: str, sfEvent, truncateSize: int = 0) -> None:
+    def scanEventStore(self, instanceId: str, sfEvent: SpiderFootEvent, truncateSize: int = 0) -> None:
         """Store an event in the database.
 
         Args:
@@ -1435,7 +1440,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError(f"SQL error encountered when storing event data ({self.dbh})") from e
 
-    def scanInstanceList(self) -> list:
+    def scanInstanceList(self) -> List[Tuple[str, str, str, str, str, str]]:
         """List all previously run scans.
 
         Returns:
@@ -1466,7 +1471,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when fetching scan list") from e
 
-    def scanResultHistory(self, instanceId: str) -> list:
+    def scanResultHistory(self, instanceId: str) -> List[Tuple[str, int]]:
         """History of data from the scan.
 
         Args:
@@ -1495,7 +1500,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError(f"SQL error encountered when fetching history for scan {instanceId}") from e
 
-    def scanElementSourcesDirect(self, instanceId: str, elementIdList: list) -> list:
+    def scanElementSourcesDirect(self, instanceId: str, elementIdList: List[str]) -> List[Tuple[str, str, str, str]]:
         """Get the source IDs, types and data for a set of IDs.
 
         Args:
@@ -1546,7 +1551,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when getting source element IDs") from e
 
-    def scanElementChildrenDirect(self, instanceId: str, elementIdList: list) -> list:
+    def scanElementChildrenDirect(self, instanceId: str, elementIdList: List[str]) -> List[Tuple[str, str, str, str]]:
         """Get the child IDs, types and data for a set of IDs.
 
         Args:
@@ -1595,7 +1600,7 @@ class SpiderFootDb:
             except sqlite3.Error as e:
                 raise IOError("SQL error encountered when getting child element IDs") from e
 
-    def scanElementSourcesAll(self, instanceId: str, childData: list) -> list:
+    def scanElementSourcesAll(self, instanceId: str, childData: List[str]) -> List[Tuple[str, str, str, str]]:
         """Get the full set of upstream IDs which are parents to the supplied set of IDs.
 
         Args:
@@ -1666,7 +1671,7 @@ class SpiderFootDb:
         datamap[parentId] = row
         return [datamap, pc]
 
-    def scanElementChildrenAll(self, instanceId: str, parentIds: list) -> list:
+    def scanElementChildrenAll(self, instanceId: str, parentIds: List[str]) -> List[Tuple[str, str, str, str]]:
         """Get the full set of downstream IDs which are children of the supplied set of IDs.
 
         Args:
@@ -1723,7 +1728,7 @@ class SpiderFootDb:
         ruleRisk: str,
         ruleYaml: str,
         correlationTitle: str,
-        eventHashes: list
+        eventHashes: List[str]
     ) -> str:
         """Create a correlation result in the database.
 
