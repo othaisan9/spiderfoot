@@ -53,7 +53,7 @@ class SpiderFootEvent:
         self.confidence = 100
         self.visibility = 100
         self.risk = 0
-        self.sourceEvent = sourceEvent
+        self.sourceEvent = sourceEvent  # This will use the setter which handles ROOT events properly
         self.__id = f"{self.eventType}{self.generated}{self.module}{random.SystemRandom().randint(0, 99999999)}"
 
     @property

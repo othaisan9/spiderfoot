@@ -320,7 +320,7 @@ class SpiderFootDb:
         # at least we can use this opportunity to ensure we have permissions to
         # read and write to such a file.
         try:
-            dbh = sqlite3.connect(database_path)
+            dbh = sqlite3.connect(database_path, check_same_thread=False)
         except Exception as e:
             raise IOError(f"Error connecting to internal database {database_path}") from e
 
@@ -1438,7 +1438,7 @@ class SpiderFootDb:
                 self.dbh.execute(qry, qvals)
                 self.conn.commit()
             except sqlite3.Error as e:
-                raise IOError(f"SQL error encountered when storing event data ({self.dbh})") from e
+                raise IOError(f"SQL error encountered when storing event data: {str(e)}. Query: {qry}, Values: {qvals}") from e
 
     def scanInstanceList(self) -> List[Tuple[str, str, str, str, str, str]]:
         """List all previously run scans.

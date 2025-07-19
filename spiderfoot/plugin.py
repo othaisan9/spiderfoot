@@ -141,6 +141,14 @@ class SpiderFootPlugin:
         self.sharedThreadPool: Optional[SpiderFootThreadPool] = None
         # Reset listenerModules to avoid sharing between instances
         self._listenerModules = []
+    
+    def setSharedThreadPool(self, sharedThreadPool: SpiderFootThreadPool) -> None:
+        """Set the shared thread pool for async processing.
+        
+        Args:
+            sharedThreadPool: The shared thread pool instance
+        """
+        self.sharedThreadPool = sharedThreadPool
 
     @property
     def log(self) -> SpiderFootPluginLogger:
@@ -519,6 +527,10 @@ class SpiderFootPlugin:
                 if self.incomingEventQueue:
                     try:
                         sfEvent = self.incomingEventQueue.get(timeout=0.1)
+                        # Handle 'FINISHED' signal
+                        if sfEvent == 'FINISHED':
+                            self.finished()
+                            break
                         self.handleEvent(sfEvent)
                     except queue.Empty:
                         sleep(0.01)

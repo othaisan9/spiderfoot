@@ -452,6 +452,70 @@ class ToolInstaller:
                 dependencies=["python3", "pip3", "git"]
             ),
             
+            "tor": ToolInfo(
+                name="tor",
+                description="The Onion Router - Anonymous communication network",
+                version="0.4+",
+                install_methods={
+                    "debian": [
+                        "sudo apt-get update",
+                        "sudo apt-get install -y tor",
+                        f"mkdir -p {os.path.join(self.tools_dir, 'tor', 'data')}",
+                        f"echo 'SocksPort 9050\\nDataDirectory {os.path.join(self.tools_dir, 'tor', 'data')}' > {os.path.join(self.tools_dir, 'tor', 'torrc')}"
+                    ],
+                    "redhat": [
+                        "sudo yum install -y epel-release",
+                        "sudo yum install -y tor",
+                        f"mkdir -p {os.path.join(self.tools_dir, 'tor', 'data')}",
+                        f"echo 'SocksPort 9050\\nDataDirectory {os.path.join(self.tools_dir, 'tor', 'data')}' > {os.path.join(self.tools_dir, 'tor', 'torrc')}"
+                    ],
+                    "macos": [
+                        "brew install tor",
+                        f"mkdir -p {os.path.join(self.tools_dir, 'tor', 'data')}",
+                        f"echo 'SocksPort 9050\\nDataDirectory {os.path.join(self.tools_dir, 'tor', 'data')}' > {os.path.join(self.tools_dir, 'tor', 'torrc')}"
+                    ],
+                    "all": [
+                        f"echo 'Tor requires system installation. Please use your package manager to install tor.'"
+                    ]
+                },
+                verify_command="tor --version",
+                required_by=["sfp_ahmia", "sfp_torch"],
+                website="https://www.torproject.org/",
+                repository="https://github.com/torproject/tor"
+            ),
+            
+            "pysocks": ToolInfo(
+                name="pysocks",
+                description="Python SOCKS client module for Tor integration",
+                version="1.7+",
+                install_methods={
+                    "all": [
+                        f"pip3 install --target={self.python_packages_dir} pysocks"
+                    ]
+                },
+                verify_command=f"python3 -c 'import sys; sys.path.insert(0, \"{self.python_packages_dir}\"); import socks; print(\"PySocks\", socks.__version__)'",
+                required_by=["tor"],
+                website="https://github.com/Anorov/PySocks",
+                repository="https://github.com/Anorov/PySocks",
+                dependencies=["python3", "pip3"]
+            ),
+            
+            "stem": ToolInfo(
+                name="stem",
+                description="Python controller library for Tor",
+                version="1.8+",
+                install_methods={
+                    "all": [
+                        f"pip3 install --target={self.python_packages_dir} stem"
+                    ]
+                },
+                verify_command=f"python3 -c 'import sys; sys.path.insert(0, \"{self.python_packages_dir}\"); import stem; print(\"Stem\", stem.__version__)'",
+                required_by=["tor"],
+                website="https://stem.torproject.org/",
+                repository="https://github.com/torproject/stem",
+                dependencies=["python3", "pip3"]
+            ),
+            
             # Dependencies
             "go": ToolInfo(
                 name="go",

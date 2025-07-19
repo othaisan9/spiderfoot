@@ -236,6 +236,50 @@ class SpiderFoot:
             return
 
         self.log.debug(f"{message}", extra={'scanId': self._scanId})
+    
+    def extractUrlsFromText(self, content: str) -> list:
+        """Extract all URLs from a string.
+
+        Args:
+            content (str): text to search for URLs
+
+        Returns:
+            list: list of identified URLs
+        """
+        return SpiderFootHelpers.extractUrlsFromText(content)
+    
+    def isValidLocalOrLoopbackIP(self, ip: str) -> bool:
+        """Check if the given IP is a local or loopback IP address.
+
+        Args:
+            ip (str): IP address to check
+
+        Returns:
+            bool: True if the IP is local or loopback, False otherwise
+        """
+        if not ip:
+            return False
+            
+        # Check for loopback addresses
+        if ip.startswith('127.') or ip == '::1':
+            return True
+            
+        # Check for local addresses
+        local_ranges = [
+            '10.',
+            '172.16.', '172.17.', '172.18.', '172.19.',
+            '172.20.', '172.21.', '172.22.', '172.23.',
+            '172.24.', '172.25.', '172.26.', '172.27.',
+            '172.28.', '172.29.', '172.30.', '172.31.',
+            '192.168.',
+            'fc00:', 'fd00:', 'fe80:'
+        ]
+        
+        for prefix in local_ranges:
+            if ip.startswith(prefix):
+                return True
+                
+        return False
 
     def hashstring(self, string: str) -> str:
         """Returns a SHA256 hash of the specified input.
