@@ -27,13 +27,6 @@ sites = {
             r'(https?%3a%2f%2f[a-z\.]*facebook.[a-z\.]+%2f[^\/"\'<> ]+/?)',
         ],
     ],
-    "Google+": [
-        "\"{name}\"+site:plus.google.com",
-        [
-            r'[ \'"](https?://plus.google.[a-z\.]+/\d+[^"\'<>\/ ]+)[\'"]',
-            r'(https?%3a%2f%2fplus.google.[a-z\.]+%2f\d+[^\/"\'<> ]+)',
-        ],
-    ],
     "LinkedIn": [
         "\"{name}\"+site:linkedin.com",
         [
