@@ -1,0 +1,688 @@
+<!-- Neo4j Graph Visualization Template for SpiderFoot BE -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Neo4j Graph Analysis - SpiderFoot BE</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/spiderfoot-icon.ico') }}" type="image/x-icon">
+    
+    <!-- Existing SpiderFoot CSS -->
+    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet">
+    
+    <!-- D3.js for graph visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Custom Neo4j visualization styles -->
+    <style>
+        .neo4j-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            padding: 20px;
+        }
+        
+        .neo4j-graph {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: white;
+            position: relative;
+        }
+        
+        .neo4j-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        
+        .neo4j-controls label {
+            font-weight: 600;
+            margin-bottom: 0;
+        }
+        
+        .neo4j-controls select, .neo4j-controls button {
+            padding: 5px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+        }
+        
+        .neo4j-controls button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            border: 1px solid #007bff;
+        }
+        
+        .neo4j-controls button:hover {
+            background: #0056b3;
+            border-color: #0056b3;
+        }
+        
+        .neo4j-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .stat-card .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .stat-label {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        
+        .legend {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        
+        .legend-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .algorithm-info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .algorithm-info h5 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        
+        .node-details-panel {
+            position: fixed;
+            right: 20px;
+            top: 80px;
+            width: 350px;
+            max-height: 600px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1050;
+            display: none;
+        }
+        
+        .node-details-header {
+            background: #007bff;
+            color: white;
+            padding: 15px;
+            border-radius: 8px 8px 0 0;
+            position: relative;
+        }
+        
+        .node-details-header h5 {
+            margin: 0;
+        }
+        
+        .node-details-close {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        
+        .node-details-body {
+            padding: 20px;
+        }
+        
+        .node-property {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #f1f3f4;
+        }
+        
+        .node-property:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        .node-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        
+        .node-actions button {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #007bff;
+            background: white;
+            color: #007bff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .node-actions button:hover {
+            background: #007bff;
+            color: white;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation (inherited from SpiderFoot) -->
+    {% include 'nav.html' %}
+    
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-12">
+                <h1>
+                    🦇 Neo4j Graph Analysis
+                    <small class="text-muted">- Scan: {{ scanname }}</small>
+                </h1>
+                
+                <!-- Breadcrumb -->
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{{ url_for('scansummary', id=scanid) }}">Scan Summary</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">Graph Analysis</li>
+                    </ol>
+                </nav>
+                
+                <!-- Statistics Dashboard -->
+                <div class="neo4j-stats" id="neo4j-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="nodes-count">-</div>
+                        <div class="stat-label">Graph Nodes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="relationships-count">-</div>
+                        <div class="stat-label">Relationships</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="events-streamed">-</div>
+                        <div class="stat-label">Events Streamed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="centrality-score">-</div>
+                        <div class="stat-label">Top Centrality Score</div>
+                    </div>
+                </div>
+                
+                <!-- Algorithm Information -->
+                <div class="algorithm-info" id="algorithm-info">
+                    <h5 id="algorithm-title">PageRank Analysis</h5>
+                    <p id="algorithm-description">
+                        PageRank identifies the most important nodes in the network based on their connections and the importance of their neighbors.
+                        Higher scores indicate nodes that are more central to the investigation.
+                    </p>
+                </div>
+                
+                <!-- Main Graph Container -->
+                <div class="neo4j-container">
+                    <div class="neo4j-controls">
+                        <label for="algorithm-select">Analysis Algorithm:</label>
+                        <select id="algorithm-select" onchange="updateAlgorithm()">
+                            <option value="pagerank">PageRank</option>
+                            <option value="betweenness">Betweenness Centrality</option>
+                            <option value="closeness">Closeness Centrality</option>
+                        </select>
+                        
+                        <label for="nodetype-filter">Node Type:</label>
+                        <select id="nodetype-filter" onchange="updateNodeTypeFilter()">
+                            <option value="">All Types</option>
+                            <option value="DOMAIN_NAME">Domains</option>
+                            <option value="INTERNET_NAME">Subdomains</option>
+                            <option value="EMAILADDR">Email Addresses</option>
+                            <option value="IP_ADDRESS">IP Addresses</option>
+                            <option value="URL">URLs</option>
+                        </select>
+                        
+                        <button onclick="refreshGraph()" class="btn btn-primary btn-sm">
+                            🔄 Refresh
+                        </button>
+                        
+                        <button onclick="exportGraph()" class="btn btn-secondary btn-sm dropdown-toggle" data-toggle="dropdown">
+                            📥 Export
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a href="#" onclick="exportGraphFormat('json')">JSON</a></li>
+                            <li><a href="#" onclick="exportGraphFormat('csv')">CSV</a></li>
+                            <li><a href="#" onclick="exportGraphFormat('graphml')">GraphML</a></li>
+                        </ul>
+                        
+                        <button onclick="toggleFullscreen()" class="btn btn-info btn-sm">
+                            🔍 Fullscreen
+                        </button>
+                    </div>
+                    
+                    <div class="neo4j-graph" id="neo4j-graph-container">
+                        <div class="loading-overlay" id="loading-overlay">
+                            <div class="loading-spinner"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Target Suggestions -->
+                <div class="card mt-4" id="target-suggestions" style="display: none;">
+                    <div class="card-header">
+                        <h5><i class="fa fa-bullseye"></i> Target Suggestions</h5>
+                        <small class="text-muted">Based on graph centrality analysis</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="suggestions-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Node Details Panel -->
+    <div class="node-details-panel" id="node-details-panel">
+        <div class="node-details-header">
+            <h5 id="node-details-title">Node Details</h5>
+            <button class="node-details-close" onclick="closeNodeDetails()">×</button>
+        </div>
+        <div class="node-details-body" id="node-details-body">
+            <!-- Content populated by JavaScript -->
+        </div>
+    </div>
+    
+    <!-- Existing SpiderFoot JavaScript -->
+    <script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
+    
+    <!-- Neo4j Visualization -->
+    <script src="{{ url_for('static', filename='js/neo4j-visualization.js') }}"></script>
+    
+    <script>
+        // Global variables
+        let currentScanId = "{{ scanid }}";
+        let currentAlgorithm = "pagerank";
+        let currentNodeType = "";
+        let neo4jVisualization = null;
+        
+        // Algorithm descriptions
+        const algorithmDescriptions = {
+            'pagerank': 'PageRank identifies the most important nodes in the network based on their connections and the importance of their neighbors. Higher scores indicate nodes that are more central to the investigation.',
+            'betweenness': 'Betweenness Centrality measures how often a node appears on the shortest paths between other nodes. High betweenness indicates nodes that act as bridges in the network.',
+            'closeness': 'Closeness Centrality measures how close a node is to all other nodes in the network. High closeness indicates nodes that can quickly reach other parts of the network.'
+        };
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeGraph();
+            loadGraphStatistics();
+            setupEventListeners();
+        });
+        
+        function initializeGraph() {
+            // Hide loading overlay initially
+            document.getElementById('loading-overlay').style.display = 'none';
+            
+            // Initialize Neo4j visualization
+            if (typeof Neo4jVisualization !== 'undefined') {
+                neo4jVisualization = new Neo4jVisualization('neo4j-graph-container', {
+                    width: 1000,
+                    height: 600
+                });
+                
+                // Load initial data
+                loadGraphData();
+            } else {
+                showError('Neo4j visualization library not loaded');
+            }
+        }
+        
+        async function loadGraphData() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`/neo4j_graph?id=${currentScanId}&algorithm=${currentAlgorithm}&nodeType=${currentNodeType}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (neo4jVisualization) {
+                    neo4jVisualization.updateGraph(data.nodes || [], data.relationships || []);
+                }
+                
+                updateStatistics(data.statistics || {});
+                updateTargetSuggestions(data.suggestions || []);
+                
+                showSuccess('Graph data loaded successfully');
+                
+            } catch (error) {
+                console.error('Error loading graph data:', error);
+                showError('Failed to load graph data: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        async function loadGraphStatistics() {
+            try {
+                const response = await fetch(`/neo4j_statistics?id=${currentScanId}`);
+                if (response.ok) {
+                    const stats = await response.json();
+                    updateStatistics(stats);
+                }
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+            }
+        }
+        
+        function updateStatistics(stats) {
+            document.getElementById('nodes-count').textContent = formatNumber(stats.nodes || 0);
+            document.getElementById('relationships-count').textContent = formatNumber(stats.relationships || 0);
+            document.getElementById('events-streamed').textContent = formatNumber(stats.events_streamed || 0);
+            document.getElementById('centrality-score').textContent = (stats.max_centrality || 0).toFixed(4);
+        }
+        
+        function updateTargetSuggestions(suggestions) {
+            const suggestionsContainer = document.getElementById('target-suggestions');
+            const suggestionsList = document.getElementById('suggestions-list');
+            
+            if (!suggestions || suggestions.length === 0) {
+                suggestionsContainer.style.display = 'none';
+                return;
+            }
+            
+            let html = '<div class="row">';
+            suggestions.slice(0, 6).forEach((suggestion, index) => {
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">${escapeHtml(suggestion.data)}</h6>
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">Score: ${suggestion.score.toFixed(4)}</small>
+                                    <small class="text-muted">Risk: ${suggestion.risk || 0}%</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary mt-2" onclick="investigateTarget('${suggestion.data}')">
+                                    Investigate
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            suggestionsList.innerHTML = html;
+            suggestionsContainer.style.display = 'block';
+        }
+        
+        function updateAlgorithm() {
+            currentAlgorithm = document.getElementById('algorithm-select').value;
+            
+            // Update algorithm description
+            document.getElementById('algorithm-title').textContent = 
+                currentAlgorithm.charAt(0).toUpperCase() + currentAlgorithm.slice(1) + ' Analysis';
+            document.getElementById('algorithm-description').textContent = 
+                algorithmDescriptions[currentAlgorithm] || '';
+            
+            loadGraphData();
+        }
+        
+        function updateNodeTypeFilter() {
+            currentNodeType = document.getElementById('nodetype-filter').value;
+            loadGraphData();
+        }
+        
+        function refreshGraph() {
+            loadGraphData();
+        }
+        
+        function exportGraph() {
+            // Default to JSON export
+            exportGraphFormat('json');
+        }
+        
+        function exportGraphFormat(format) {
+            // Create hidden iframe for download
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = `/neo4j_export?id=${currentScanId}&format=${format}`;
+            document.body.appendChild(iframe);
+            
+            // Remove iframe after download starts
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 5000);
+            
+            showSuccess(`Exporting graph data as ${format.toUpperCase()}...`);
+        }
+        
+        function toggleFullscreen() {
+            const container = document.getElementById('neo4j-graph-container');
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.error('Error entering fullscreen:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        function investigateTarget(target) {
+            // Redirect to new scan or analysis for the target
+            const encodedTarget = encodeURIComponent(target);
+            window.open(`/newscan?target=${encodedTarget}`, '_blank');
+        }
+        
+        function setupEventListeners() {
+            // Listen for node selection events
+            document.addEventListener('neo4j-node-selected', function(event) {
+                showNodeDetails(event.detail.node);
+            });
+            
+            // Handle fullscreen changes
+            document.addEventListener('fullscreenchange', function() {
+                if (document.fullscreenElement) {
+                    // Resize graph for fullscreen
+                    if (neo4jVisualization) {
+                        neo4jVisualization.resize(window.innerWidth, window.innerHeight);
+                    }
+                }
+            });
+        }
+        
+        function showNodeDetails(node) {
+            const panel = document.getElementById('node-details-panel');
+            const title = document.getElementById('node-details-title');
+            const body = document.getElementById('node-details-body');
+            
+            title.textContent = `${node.type}: ${node.label}`;
+            
+            body.innerHTML = `
+                <div class="node-property">
+                    <strong>Data:</strong>
+                    <span>${escapeHtml(node.label)}</span>
+                </div>
+                <div class="node-property">
+                    <strong>Type:</strong>
+                    <span>${node.type}</span>
+                </div>
+                <div class="node-property">
+                    <strong>Confidence:</strong>
+                    <span>${node.confidence}%</span>
+                </div>
+                <div class="node-property">
+                    <strong>Risk Level:</strong>
+                    <span class="${getRiskClass(node.risk)}">${node.risk}%</span>
+                </div>
+                <div class="node-property">
+                    <strong>Scanned:</strong>
+                    <span>${node.scanned ? 'Yes' : 'No'}</span>
+                </div>
+                ${node.affiliate ? '<div class="node-property"><strong>Affiliate:</strong><span>Yes</span></div>' : ''}
+                
+                <div class="node-actions">
+                    <button onclick="expandNode('${node.id}')">Expand</button>
+                    <button onclick="focusNode('${node.id}')">Focus</button>
+                    <button onclick="hideNode('${node.id}')">Hide</button>
+                    <button onclick="investigateTarget('${node.label}')">Investigate</button>
+                </div>
+            `;
+            
+            panel.style.display = 'block';
+        }
+        
+        function closeNodeDetails() {
+            document.getElementById('node-details-panel').style.display = 'none';
+        }
+        
+        function expandNode(nodeId) {
+            if (neo4jVisualization) {
+                neo4jVisualization.expandNode(nodeId);
+            }
+        }
+        
+        function focusNode(nodeId) {
+            if (neo4jVisualization) {
+                neo4jVisualization.focusNode(nodeId);
+            }
+        }
+        
+        function hideNode(nodeId) {
+            if (neo4jVisualization) {
+                neo4jVisualization.hideNode(nodeId);
+            }
+        }
+        
+        // Utility functions
+        function showLoading(show) {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.display = show ? 'flex' : 'none';
+        }
+        
+        function showError(message) {
+            showMessage(message, 'error');
+        }
+        
+        function showSuccess(message) {
+            showMessage(message, 'success');
+        }
+        
+        function showInfo(message) {
+            showMessage(message, 'info');
+        }
+        
+        function showMessage(message, type) {
+            const alertClass = type === 'error' ? 'alert-danger' : 
+                             type === 'success' ? 'alert-success' : 'alert-info';
+            
+            const alert = document.createElement('div');
+            alert.className = `alert ${alertClass} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('.container-fluid').firstChild);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+        
+        function formatNumber(num) {
+            return new Intl.NumberFormat().format(num);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function getRiskClass(risk) {
+            if (risk >= 75) return 'text-danger';
+            if (risk >= 50) return 'text-warning';
+            if (risk >= 25) return 'text-info';
+            return 'text-success';
+        }
+    </script>
+</body>
+</html>

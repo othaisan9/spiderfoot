@@ -1,4 +1,4 @@
-VERSION = (0, 1, 0)
+VERSION = (0, 2, 0)
 EDITION = "BAT INTELLIGENCE Edition"
 POWERED_BY = "Powered by SpiderFoot"
 

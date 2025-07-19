@@ -7,6 +7,18 @@ passwd
 spiderfoot.crt
 spiderfoot.key
 
+# Tool installation directories
+/tools/
+/activate_tools.sh
+
+# Nuclei specific
+/nuclei-output/
+/nuclei-reports/
+
+# Go directories (in case they're created in user home)
+~/go/
+$HOME/go/
+
 spiderfoot/static/node_modules/*
 
 spiderfoot/static/node_modules/alertifyjs/*
@@ -144,6 +156,7 @@ Thumbs.db
 ########################
 venv/
 venv3/
+.venv/
 
 # IDE #
 #######

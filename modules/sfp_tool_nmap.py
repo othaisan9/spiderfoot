@@ -16,6 +16,7 @@ from subprocess import PIPE, Popen
 from netaddr import IPNetwork
 
 from spiderfoot import SpiderFootEvent, SpiderFootPlugin
+from spiderfoot.tool_utils import tool_manager
 
 
 class sfp_tool_nmap(SpiderFootPlugin):
@@ -113,24 +114,24 @@ class sfp_tool_nmap(SpiderFootPlugin):
 
         self.results[eventData] = True
 
-        if not self.opts['nmappath']:
-            self.error("You enabled sfp_tool_nmap but did not set a path to the tool!")
-            self.errorState = True
-            return
-
-        # Normalize path
-        if self.opts['nmappath'].endswith('nmap'):
-            exe = self.opts['nmappath']
-        elif self.opts['nmappath'].endswith('/'):
-            exe = self.opts['nmappath'] + "nmap"
-        else:
-            self.error("Could not recognize your nmap path configuration.")
-            self.errorState = True
-            return
-
+        # Use tool manager to find nmap
+        exe = tool_manager.get_tool_path('nmap')
+        
+        # Fallback to user-configured path if needed
+        if not exe and self.opts['nmappath']:
+            # Normalize path
+            if self.opts['nmappath'].endswith('nmap'):
+                exe = self.opts['nmappath']
+            elif self.opts['nmappath'].endswith('/'):
+                exe = self.opts['nmappath'] + "nmap"
+            else:
+                self.error("Could not recognize your nmap path configuration.")
+                self.errorState = True
+                return
+        
         # If tool is not found, abort
-        if not os.path.isfile(exe):
-            self.error("File does not exist: " + exe)
+        if not exe or not os.path.isfile(exe):
+            self.error("Nmap not found. Please run 'python install_tools.py --install nmap' to install it.")
             self.errorState = True
             return
 

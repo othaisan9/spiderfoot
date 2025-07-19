@@ -403,9 +403,9 @@ class SpiderFootWebUi:
                 rows.append([rule_name, correlation, rule_risk, rule_description])
 
             if scan_name:
-                fname = f"{scan_name}-SpiderFoot-correlations.xlxs"
+                fname = f"{scan_name}-SpiderFoot-correlations.xlsx"
             else:
-                fname = "SpiderFoot-correlations.xlxs"
+                fname = "SpiderFoot-correlations.xlsx"
 
             cherrypy.response.headers['Content-Disposition'] = f"attachment; filename={fname}"
             cherrypy.response.headers['Content-Type'] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1882,3 +1882,394 @@ class SpiderFootWebUi:
         retdata['data'] = datamap
 
         return retdata
+
+    # Neo4j Graph Database API Endpoints
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def neo4j_graph(self: 'SpiderFootWebUi', id: str, algorithm: str = "pagerank", 
+                   nodeType: str = None, limit: int = 500) -> dict:
+        """Get Neo4j graph data for visualization.
+        
+        Args:
+            id (str): scan ID
+            algorithm (str): graph algorithm (pagerank, betweenness, closeness)
+            nodeType (str): filter by node type
+            limit (int): maximum nodes to return
+            
+        Returns:
+            dict: graph nodes, relationships, and statistics
+        """
+        if not id:
+            return self.jsonify_error('400', "No scan ID specified")
+
+        try:
+            # Import Neo4j client
+            from spiderfoot.neo4j_async import AsyncNeo4jClient, Neo4jConfig
+            import asyncio
+            
+            # Get Neo4j configuration
+            config = Neo4jConfig(
+                uri=self.config.get('neo4j_uri', 'bolt://localhost:7687'),
+                username=self.config.get('neo4j_username', 'neo4j'),
+                password=self.config.get('neo4j_password', 'spiderfoot')
+            )
+            
+            # Create async client and get data
+            async def get_graph_data():
+                async with AsyncNeo4jClient(config) as client:
+                    # Get target suggestions based on algorithm
+                    suggestions = await client.suggest_targets(
+                        target_type=nodeType or 'DOMAIN_NAME',
+                        algorithm=algorithm,
+                        limit=min(int(limit), 5000)
+                    )
+                    
+                    # Get graph statistics
+                    stats = await client.get_graph_statistics()
+                    
+                    return {
+                        'scan_id': id,
+                        'algorithm': algorithm,
+                        'nodes': suggestions,
+                        'relationships': [],  # TODO: Implement relationship fetching
+                        'statistics': stats
+                    }
+            
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(get_graph_data())
+            loop.close()
+            
+            return result
+            
+        except ImportError:
+            return self.jsonify_error('503', "Neo4j integration not available")
+        except Exception as e:
+            return self.jsonify_error('500', f"Neo4j query failed: {str(e)}")
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def neo4j_suggestions(self: 'SpiderFootWebUi', id: str, algorithm: str = "pagerank",
+                         limit: int = 20, unscanned_only: bool = True) -> dict:
+        """Get target suggestions from Neo4j graph analysis.
+        
+        Args:
+            id (str): scan ID
+            algorithm (str): analysis algorithm
+            limit (int): maximum suggestions
+            unscanned_only (bool): only suggest unscanned targets
+            
+        Returns:
+            dict: target suggestions with scores
+        """
+        if not id:
+            return self.jsonify_error('400', "No scan ID specified")
+
+        try:
+            from spiderfoot.neo4j_async import AsyncNeo4jClient, Neo4jConfig
+            import asyncio
+            
+            config = Neo4jConfig(
+                uri=self.config.get('neo4j_uri', 'bolt://localhost:7687'),
+                username=self.config.get('neo4j_username', 'neo4j'),
+                password=self.config.get('neo4j_password', 'spiderfoot')
+            )
+            
+            async def get_suggestions():
+                async with AsyncNeo4jClient(config) as client:
+                    suggestions = await client.suggest_targets(
+                        target_type='DOMAIN_NAME',
+                        algorithm=algorithm,
+                        limit=int(limit)
+                    )
+                    
+                    # Filter unscanned if requested
+                    if unscanned_only:
+                        suggestions = [s for s in suggestions if not s.get('scanned', True)]
+                    
+                    return {
+                        'scan_id': id,
+                        'algorithm': algorithm,
+                        'suggestions': suggestions[:int(limit)]
+                    }
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(get_suggestions())
+            loop.close()
+            
+            return result
+            
+        except ImportError:
+            return self.jsonify_error('503', "Neo4j integration not available")
+        except Exception as e:
+            return self.jsonify_error('500', f"Failed to get suggestions: {str(e)}")
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def neo4j_statistics(self: 'SpiderFootWebUi', id: str) -> dict:
+        """Get Neo4j graph statistics for a scan.
+        
+        Args:
+            id (str): scan ID
+            
+        Returns:
+            dict: graph statistics
+        """
+        if not id:
+            return self.jsonify_error('400', "No scan ID specified")
+
+        try:
+            from spiderfoot.neo4j_async import AsyncNeo4jClient, Neo4jConfig
+            import asyncio
+            
+            config = Neo4jConfig(
+                uri=self.config.get('neo4j_uri', 'bolt://localhost:7687'),
+                username=self.config.get('neo4j_username', 'neo4j'),
+                password=self.config.get('neo4j_password', 'spiderfoot')
+            )
+            
+            async def get_stats():
+                async with AsyncNeo4jClient(config) as client:
+                    return await client.get_graph_statistics()
+            
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(get_stats())
+            loop.close()
+            
+            return result
+            
+        except ImportError:
+            return self.jsonify_error('503', "Neo4j integration not available")
+        except Exception as e:
+            return self.jsonify_error('500', f"Failed to get statistics: {str(e)}")
+
+    @cherrypy.expose
+    def neo4j_graph_page(self: 'SpiderFootWebUi', id: str) -> str:
+        """Neo4j graph visualization page.
+        
+        Args:
+            id (str): scan ID
+            
+        Returns:
+            str: rendered HTML page
+        """
+        if not id:
+            return self.error("No scan ID specified")
+
+        dbh = SpiderFootDb(self.config)
+        scaninfo = dbh.scanInstanceGet(id)
+        
+        if not scaninfo:
+            return self.error("Invalid scan ID")
+
+        scanname = scaninfo[0]
+        
+        try:
+            # Try to read the custom Neo4j template
+            template_path = "spiderfoot/webui/templates/neo4j-graph.html"
+            with open(template_path, 'r') as f:
+                template_content = f.read()
+                
+            # Use Mako template
+            template = Template(template_content)
+            return template.render(
+                scanid=id,
+                scanname=scanname,
+                version=__version__
+            )
+            
+        except Exception as e:
+            # Fallback to basic template
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Neo4j Graph Analysis - {scanname}</title>
+                <script src="https://d3js.org/d3.v7.min.js"></script>
+            </head>
+            <body>
+                <h1>Neo4j Graph Analysis: {scanname}</h1>
+                <div id="neo4j-graph-container" style="width: 100%; height: 600px; border: 1px solid #ccc;"></div>
+                <p>Graph visualization will be available when Neo4j template is properly configured.</p>
+                <p>Error: {str(e)}</p>
+            </body>
+            </html>
+            """
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def async_stats(self: 'SpiderFootWebUi') -> dict:
+        """Get async framework statistics.
+        
+        Returns:
+            dict: async framework performance metrics
+        """
+        try:
+            # TODO: Implement async framework statistics collection
+            return {
+                'framework_version': '1.0.0',
+                'active_scans': 0,
+                'total_async_operations': 0,
+                'event_queue_size': 0,
+                'connection_pools': {
+                    'http_client': {
+                        'active_connections': 0,
+                        'max_connections': 50,
+                        'requests_per_second': 0
+                    }
+                },
+                'performance_metrics': {
+                    'avg_response_time': '0.000s',
+                    'concurrent_operations': 0,
+                    'memory_usage': '0MB'
+                }
+            }
+        except Exception as e:
+            return self.jsonify_error('500', f"Failed to get async stats: {str(e)}")
+
+    @cherrypy.expose
+    def neo4j_export(self: 'SpiderFootWebUi', id: str, format: str = "graphml") -> str:
+        """Export Neo4j graph data in various formats.
+        
+        Args:
+            id (str): scan ID
+            format (str): export format (graphml, gexf, json, csv)
+            
+        Returns:
+            str: graph data in requested format
+        """
+        if not id:
+            return self.error("No scan ID specified")
+
+        dbh = SpiderFootDb(self.config)
+        scaninfo = dbh.scanInstanceGet(id)
+        
+        if not scaninfo:
+            return self.error("Invalid scan ID")
+
+        scan_name = scaninfo[0]
+        
+        try:
+            from spiderfoot.neo4j_async import AsyncNeo4jClient, Neo4jConfig
+            import asyncio
+            
+            config = Neo4jConfig(
+                uri=self.config.get('neo4j_uri', 'bolt://localhost:7687'),
+                username=self.config.get('neo4j_username', 'neo4j'),
+                password=self.config.get('neo4j_password', 'spiderfoot')
+            )
+            
+            async def export_graph_data():
+                async with AsyncNeo4jClient(config) as client:
+                    # Get all nodes and relationships
+                    suggestions = await client.suggest_targets(
+                        target_type=None,  # All types
+                        algorithm='pagerank',
+                        limit=10000  # High limit for export
+                    )
+                    
+                    stats = await client.get_graph_statistics()
+                    
+                    return {
+                        'nodes': suggestions,
+                        'statistics': stats,
+                        'scan_name': scan_name
+                    }
+            
+            # Run async function
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            data = loop.run_until_complete(export_graph_data())
+            loop.close()
+            
+            # Format data based on requested format
+            if format.lower() == "json":
+                fname = f"{scan_name}-neo4j-graph.json" if scan_name else "neo4j-graph.json"
+                cherrypy.response.headers['Content-Disposition'] = f"attachment; filename={fname}"
+                cherrypy.response.headers['Content-Type'] = "application/json; charset=utf-8"
+                cherrypy.response.headers['Pragma'] = "no-cache"
+                return json.dumps(data, indent=2).encode('utf-8')
+                
+            elif format.lower() == "csv":
+                # Convert nodes to CSV format
+                fileobj = StringIO()
+                parser = csv.writer(fileobj)
+                
+                # Write headers
+                parser.writerow(['Data', 'Type', 'Confidence', 'Risk', 'Score', 'Scanned', 'Affiliate'])
+                
+                # Write nodes
+                for node in data['nodes']:
+                    parser.writerow([
+                        node.get('data', ''),
+                        node.get('type', ''),
+                        node.get('confidence', 0),
+                        node.get('risk', 0),
+                        node.get('score', 0),
+                        'Yes' if node.get('scanned', False) else 'No',
+                        'Yes' if node.get('affiliate', False) else 'No'
+                    ])
+                
+                fname = f"{scan_name}-neo4j-nodes.csv" if scan_name else "neo4j-nodes.csv"
+                cherrypy.response.headers['Content-Disposition'] = f"attachment; filename={fname}"
+                cherrypy.response.headers['Content-Type'] = "application/csv"
+                cherrypy.response.headers['Pragma'] = "no-cache"
+                return fileobj.getvalue().encode('utf-8')
+                
+            elif format.lower() == "graphml":
+                # Generate GraphML format
+                graphml = self._generate_graphml(data['nodes'])
+                fname = f"{scan_name}-neo4j-graph.graphml" if scan_name else "neo4j-graph.graphml"
+                cherrypy.response.headers['Content-Disposition'] = f"attachment; filename={fname}"
+                cherrypy.response.headers['Content-Type'] = "application/xml"
+                cherrypy.response.headers['Pragma'] = "no-cache"
+                return graphml.encode('utf-8')
+                
+            else:
+                return self.error(f"Unsupported export format: {format}")
+                
+        except ImportError:
+            return self.error("Neo4j integration not available")
+        except Exception as e:
+            return self.error(f"Export failed: {str(e)}")
+    
+    def _generate_graphml(self: 'SpiderFootWebUi', nodes: list) -> str:
+        """Generate GraphML format from nodes.
+        
+        Args:
+            nodes (list): list of node dictionaries
+            
+        Returns:
+            str: GraphML formatted string
+        """
+        graphml = """<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+  <key id="d0" for="node" attr.name="data" attr.type="string"/>
+  <key id="d1" for="node" attr.name="type" attr.type="string"/>
+  <key id="d2" for="node" attr.name="confidence" attr.type="int"/>
+  <key id="d3" for="node" attr.name="risk" attr.type="int"/>
+  <key id="d4" for="node" attr.name="score" attr.type="double"/>
+  <graph id="G" edgedefault="directed">
+"""
+        
+        # Add nodes
+        for i, node in enumerate(nodes):
+            node_id = f"n{i}"
+            graphml += f'    <node id="{node_id}">\n'
+            graphml += f'      <data key="d0">{html.escape(str(node.get("data", "")))}</data>\n'
+            graphml += f'      <data key="d1">{node.get("type", "")}</data>\n'
+            graphml += f'      <data key="d2">{node.get("confidence", 0)}</data>\n'
+            graphml += f'      <data key="d3">{node.get("risk", 0)}</data>\n'
+            graphml += f'      <data key="d4">{node.get("score", 0)}</data>\n'
+            graphml += f'    </node>\n'
+        
+        graphml += """  </graph>
+</graphml>"""
+        
+        return graphml
