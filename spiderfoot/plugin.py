@@ -529,7 +529,7 @@ class SpiderFootPlugin:
                         sfEvent = self.incomingEventQueue.get(timeout=0.1)
                         # Handle 'FINISHED' signal
                         if sfEvent == 'FINISHED':
-                            self.finished()
+                            self.finish()
                             break
                         self.handleEvent(sfEvent)
                     except queue.Empty:

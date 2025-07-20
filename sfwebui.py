@@ -1388,8 +1388,20 @@ class SpiderFootWebUi:
         Raises:
             HTTPRedirect: redirect to new scan info page
         """
+        # Handle array parameters from CherryPy
+        if isinstance(usecase, list):
+            # Use the value from the radio button (first element), not the hidden field
+            usecase = usecase[0] if usecase else ""
+        
+        # Debug logging - raw values
+        self.log.info(f"startscan RAW params: scanname='{scanname}', scantarget='{scantarget}', "
+                      f"modulelist='{modulelist}', typelist='{typelist}', usecase='{usecase}'")
+        
         scanname = self.cleanUserInput([scanname])[0]
         scantarget = self.cleanUserInput([scantarget])[0]
+        
+        # Debug logging - cleaned values
+        self.log.info(f"startscan CLEANED: scanname='{scanname}', scantarget='{scantarget}'")
 
         if not scanname:
             if cherrypy.request.headers.get('Accept') and 'application/json' in cherrypy.request.headers.get('Accept'):

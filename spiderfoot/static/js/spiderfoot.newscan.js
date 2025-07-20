@@ -2,17 +2,26 @@
     activeTab = "use";
 
     function submitForm() {
-        list = "";
-        $("[id^="+activeTab+"_]").each(function() {
-            if ($(this).is(":checked")) {
-                list += $(this).attr('id') + ",";
-            }
-        });
+        // Use case tab uses radio buttons - they submit automatically
+        if (activeTab == "use") {
+            // Clear other lists when using use case
+            $("#modulelist").val("");
+            $("#typelist").val("");
+        } else {
+            // Handle module and type tabs - they use checkboxes
+            list = "";
+            $("[id^="+activeTab+"_]").each(function() {
+                if ($(this).is(":checked")) {
+                    list += $(this).attr('id') + ",";
+                }
+            });
 
-        $("#"+activeTab+"list").val(list);
-        for (i = 0; i < tabs.length; tabs++) {
-            if (tabs[i] != activeTab) {
-                $("#"+tabs[i]+"list").val("");
+            $("#"+activeTab+"list").val(list);
+            // Clear the other list
+            for (i = 0; i < tabs.length; i++) {
+                if (tabs[i] != activeTab && tabs[i] != "use") {
+                    $("#"+tabs[i]+"list").val("");
+                }
             }
         }
     }
