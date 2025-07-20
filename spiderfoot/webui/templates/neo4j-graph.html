@@ -474,7 +474,7 @@
                                 <h6 class="card-title">${escapeHtml(suggestion.data)}</h6>
                                 <div class="d-flex justify-content-between">
                                     <small class="text-muted">Score: ${suggestion.score.toFixed(4)}</small>
-                                    <small class="text-muted">Risk: ${suggestion.risk || '0'}%</small>
+                                    <small class="text-muted">Risk: ${suggestion.risk ? suggestion.risk : '0'}%</small>
                                 </div>
                                 <button class="btn btn-sm btn-outline-primary mt-2" onclick="investigateTarget('${escapeHtml(suggestion.data).replace(/'/g, "\\'")}')">
                                     Investigate

@@ -17,10 +17,6 @@ import threading
 import time
 from queue import Empty as QueueEmpty
 from queue import Queue
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import requests
-from urllib3.util.retry import Retry
-from requests.adapters import HTTPAdapter
 
 from spiderfoot import SpiderFootEvent, SpiderFootHelpers, SpiderFootPlugin
 
@@ -42,10 +38,7 @@ class sfp_accounts(SpiderFootPlugin):
         "userfromemail": True,
         "permutate": False,
         "usernamesize": 4,
-        "_maxthreads": 50,  # 증가
-        "max_results": 100,  # 조기 종료 옵션
-        "priority_only": False,  # 우선순위 사이트만
-        "request_timeout": 5  # 사이트별 타임아웃
+        "_maxthreads": 20
     }
 
     # Option descriptions
@@ -56,10 +49,7 @@ class sfp_accounts(SpiderFootPlugin):
         "userfromemail": "Extract usernames from e-mail addresses at all? If disabled this can reduce false positives for common usernames but for highly unique usernames it would result in missed accounts.",
         "permutate": "Look for the existence of account name permutations. Useful to identify fraudulent social media accounts or account squatting.",
         "usernamesize": "The minimum length of a username to query across social media sites. Helps avoid false positives for very common short usernames.",
-        "_maxthreads": "Maximum threads",
-        "max_results": "Stop after finding this many accounts (0 = no limit)",
-        "priority_only": "Only check priority sites like GitHub, LinkedIn, Twitter (faster but less comprehensive)",
-        "request_timeout": "Timeout per site request in seconds"
+        "_maxthreads": "Maximum threads"
     }
 
     results = None
@@ -69,16 +59,6 @@ class sfp_accounts(SpiderFootPlugin):
     errorState = False
     distrustedChecked = False
     lock = None
-    session = None  # HTTP 세션
-    slow_sites = set()  # 느린 사이트 추적
-    
-    # 우선순위 사이트 목록
-    PRIORITY_SITES = [
-        'github', 'gitlab', 'bitbucket',
-        'linkedin', 'twitter', 'instagram', 'facebook', 'tiktok',
-        'reddit', 'youtube', 'medium', 'dev.to',
-        'stackoverflow', 'hackerone', 'bugcrowd'
-    ]
 
     def setup(self, sfc, userOpts=dict()):
         self.sf = sfc
@@ -89,18 +69,6 @@ class sfp_accounts(SpiderFootPlugin):
         self.distrustedChecked = False
         self.__dataSource__ = "Social Media"
         self.lock = threading.Lock()
-        self.slow_sites = set()
-        
-        # HTTP 세션 최적화
-        self.session = requests.Session()
-        retry = Retry(total=2, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
-        adapter = HTTPAdapter(
-            max_retries=retry,
-            pool_connections=100,
-            pool_maxsize=100
-        )
-        self.session.mount('http://', adapter)
-        self.session.mount('https://', adapter)
 
         for opt in list(userOpts.keys()):
             self.opts[opt] = userOpts[opt]
@@ -122,33 +90,11 @@ class sfp_accounts(SpiderFootPlugin):
             self.sf.cachePut("sfaccountsv2", content)
 
         try:
-            all_sites = json.loads(content)['sites']
-            self.sites = [site for site in all_sites if not site.get('valid', True) is False]
-            
-            # 사이트 우선순위 정렬
-            self.sites = self.prioritize_sites(self.sites)
-            
+            self.sites = [site for site in json.loads(content)['sites'] if not site.get('valid', True) is False]
         except Exception as e:
             self.error(f"Unable to parse social media accounts list: {e}")
             self.errorState = True
             return
-
-    def prioritize_sites(self, sites):
-        """사이트를 우선순위에 따라 정렬"""
-        priority = []
-        normal = []
-        
-        for site in sites:
-            site_name = site.get('name', '').lower()
-            if any(p in site_name for p in self.PRIORITY_SITES):
-                priority.append(site)
-            else:
-                normal.append(site)
-        
-        if self.opts.get('priority_only', False):
-            return priority
-        
-        return priority + normal
 
     def watchedEvents(self):
         return ["EMAILADDR", "DOMAIN_NAME", "HUMAN_NAME", "USERNAME"]
@@ -216,122 +162,49 @@ class sfp_accounts(SpiderFootPlugin):
         with self.lock:
             self.siteResults[retname] = True
 
-    def checkSite_optimized(self, username, site):
-        """최적화된 사이트 체크 - requests 세션 사용"""
-        if site['name'] in self.slow_sites:
-            return None
-            
-        start_time = time.time()
-        
-        if 'uri_check' not in site:
-            return None
-
-        url = site['uri_check'].format(account=username)
-        if 'uri_pretty' in site:
-            ret_url = site['uri_pretty'].format(account=username)
-        else:
-            ret_url = url
-            
-        retname = f"{site['name']} (Category: {site['cat']})\n<SFURL>{ret_url}</SFURL>"
-
-        try:
-            # 최적화된 요청
-            headers = {'User-Agent': self.opts['_useragent']}
-            timeout = self.opts.get('request_timeout', 5)
-            
-            if site.get('post_body'):
-                response = self.session.post(
-                    url, 
-                    data=site['post_body'],
-                    headers=headers,
-                    timeout=timeout,
-                    verify=False
-                )
-            else:
-                response = self.session.get(
-                    url,
-                    headers=headers, 
-                    timeout=timeout,
-                    verify=False
-                )
-            
-            content = response.text
-            code = str(response.status_code)
-            
-        except Exception as e:
-            self.debug(f"Error checking {site['name']}: {e}")
-            # 타임아웃이 자주 발생하면 느린 사이트로 분류
-            if time.time() - start_time > timeout:
-                self.slow_sites.add(site['name'])
-            return None
-
-        # 응답 검증
-        if site.get('e_code') and site.get('e_code') != site.get('m_code'):
-            if code != str(site.get('e_code')):
-                return None
-
-        if site.get('e_string') and site.get('e_string') not in content:
-            return None
-            
-        if site.get('m_string') and site.get('m_string') in content:
-            return None
-
-        if self.opts['musthavename']:
-            if username.lower() not in content.lower():
-                self.debug(f"Skipping {site['name']} as username not mentioned.")
-                return None
-
-        # 성공
-        return retname
-
     def checkSites(self, username, sites=None):
-        """ThreadPoolExecutor를 사용한 병렬 처리 - 성능 최적화"""
+        def processSiteQueue(username, queue):
+            try:
+                while True:
+                    site = queue.get(timeout=0.1)
+                    try:
+                        self.checkSite(username, site)
+                    except Exception as e:
+                        self.debug(f'Thread {threading.current_thread().name} exception: {e}')
+            except QueueEmpty:
+                return
+
         startTime = time.monotonic()
-        results = []
-        found_count = 0
-        max_results = self.opts.get('max_results', 0)
-        
+
+        # results will be collected in siteResults
+        self.siteResults = {}
+
         sites = self.sites if sites is None else sites
-        
-        # 느린 사이트 필터링
-        filtered_sites = [s for s in sites if s['name'] not in self.slow_sites]
-        
-        with ThreadPoolExecutor(max_workers=self.opts['_maxthreads']) as executor:
-            # 모든 작업 제출
-            future_to_site = {}
-            
-            for site in filtered_sites:
-                # 조기 종료 체크
-                if max_results > 0 and found_count >= max_results:
-                    break
-                    
-                future = executor.submit(self.checkSite_optimized, username, site)
-                future_to_site[future] = site
-            
-            # 완료된 작업부터 처리
-            for future in as_completed(future_to_site):
-                try:
-                    result = future.result()
-                    if result:
-                        results.append(result)
-                        found_count += 1
-                        
-                        # 조기 종료
-                        if max_results > 0 and found_count >= max_results:
-                            self.info(f"Reached max_results limit ({max_results}), stopping search")
-                            # 나머지 작업 취소
-                            for f in future_to_site:
-                                f.cancel()
-                            break
-                except Exception as e:
-                    site = future_to_site[future]
-                    self.debug(f"Error checking {site['name']}: {e}")
+
+        # load the queue
+        queue = Queue()
+        for site in sites:
+            queue.put(site)
+
+        # start the scan threads
+        threads = []
+        for i in range(min(len(sites), self.opts['_maxthreads'])):
+            thread = threading.Thread(
+                name=f'sfp_accounts_scan_{i}',
+                target=processSiteQueue,
+                args=(username, queue))
+            thread.start()
+            threads.append(thread)
+
+        # wait for all scan threads to finish
+        while threads:
+            threads.pop(0).join()
 
         duration = time.monotonic() - startTime
-        scanRate = len(filtered_sites) / duration if duration > 0 else 0
-        self.info(f'Scan statistics: name={username}, found={found_count}, duration={duration:.2f}s, rate={scanRate:.0f} sites/s')
+        scanRate = len(sites) / duration
+        self.debug(f'Scan statistics: name={username}, count={len(self.siteResults)}, duration={duration:.2f}, rate={scanRate:.0f}')
 
-        return results
+        return [site for site, found in self.siteResults.items() if found]
 
     def generatePermutations(self, username):
         permutations = list()
