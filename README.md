@@ -111,6 +111,23 @@ To install and run SpiderFoot, you need at least Python 3.7 and a number of Pyth
  python3 ./sf.py -l 127.0.0.1:5001
 ```
 
+#### Installing Third-Party Tools:
+
+Some SpiderFoot modules require third-party tools. Use the included installer:
+
+```
+# List available tools
+python install_tools.py --list
+
+# Install specific tools
+python install_tools.py --install nmap nuclei dnstwist
+
+# Install all tools
+python install_tools.py --all
+```
+
+**Note for Ubuntu 23.04+ / Debian 12+ users**: These systems require special handling for Python packages. The installer automatically uses `pipx` for Python tools to avoid conflicts with system packages.
+
 Check out the [documentation](https://www.spiderfoot.net/documentation) and our [asciinema videos](https://asciinema.org/~spiderfoot) for more tutorials.
 
 ### COMMUNITY

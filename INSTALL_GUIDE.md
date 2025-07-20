@@ -81,6 +81,42 @@ pip install -r requirements-dev.txt
 pre-commit install
 ```
 
+### Method 4: Installing Third-Party Tools
+
+SpiderFoot BE includes several modules that require third-party security tools. Use the included installer:
+
+```bash
+# List available tools and their status
+python install_tools.py --list
+
+# Install specific tools
+python install_tools.py --install nmap nuclei dnstwist
+
+# Install all tools
+python install_tools.py --all
+
+# Check installation log
+cat tools_install.log
+```
+
+#### Important Notes for Ubuntu 23.04+ / Debian 12+
+
+These systems use PEP 668 (externally managed environments) which restricts system-wide Python package installations. The installer handles this automatically by:
+
+1. Using `pipx` for Python applications (recommended)
+2. Using system package managers when available
+3. Creating isolated environments for each tool
+
+If you encounter issues:
+```bash
+# Install pipx if not available
+sudo apt-get install pipx
+pipx ensurepath
+
+# Restart your shell or run
+source ~/.bashrc
+```
+
 ## Configuration
 
 ### Basic Configuration
@@ -278,11 +314,43 @@ python sf.py -d -s example.com -m sfp__stor_db
 '_debug': True
 ```
 
+### Tool Installation Issues
+
+#### 6. Python Package Installation Errors (Ubuntu 23.04+)
+```
+error: externally-managed-environment
+```
+**Solution**: The installer automatically uses pipx, but if issues persist:
+```bash
+# Install pipx
+sudo apt-get install pipx
+pipx ensurepath
+
+# Or use virtual environment
+python -m venv .venv
+source .venv/bin/activate
+python install_tools.py --install dnstwist
+```
+
+#### 7. Tool Not Found After Installation
+```
+command not found: nmap
+```
+**Solution**: Activate the tool environment:
+```bash
+# Source the activation script
+source activate_tools.sh
+
+# Or add to PATH manually
+export PATH="$PWD/tools/bin:$PATH"
+```
+
 ### Getting Help
 
 1. **Check Logs**
    - Web UI: Look for errors in console
    - CLI: Add `-d` flag for debug output
+   - Tool Installation: Check `tools_install.log`
 
 2. **Verify Dependencies**
    ```bash
@@ -296,6 +364,9 @@ python sf.py -d -s example.com -m sfp__stor_db
    
    # Test database connection
    python -c "from spiderfoot import SpiderFootDb; db = SpiderFootDb({}); print('DB OK')"
+   
+   # Test installed tools
+   python install_tools.py --check
    ```
 
 4. **Report Issues**

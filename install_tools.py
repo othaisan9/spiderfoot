@@ -60,6 +60,9 @@ class ToolInstaller:
         self.os_type = self._detect_os()
         self.package_manager = self._detect_package_manager()
         
+        # Set up log file
+        self.log_file = None
+        
         # Set up project-local installation directories
         if project_dir is None:
             self.project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,6 +82,10 @@ class ToolInstaller:
         # Update environment variables
         self._setup_environment()
         
+        # Set up log file after project_dir is set
+        self.log_file = os.path.join(self.project_dir, "tools_install.log")
+        self._add_file_logging()
+        
         self.tools_config = self._load_tools_config()
         
     def _setup_logging(self) -> logging.Logger:
@@ -96,6 +103,26 @@ class ToolInstaller:
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         return logger
+        
+    def _add_file_logging(self):
+        """Add file logging handler."""
+        file_handler = logging.FileHandler(self.log_file, mode='a')
+        file_handler.setLevel(logging.DEBUG)
+        
+        # Always use detailed format for log file
+        file_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        file_handler.setFormatter(file_formatter)
+        
+        self.logger.addHandler(file_handler)
+        self.logger.info("="*60)
+        self.logger.info(f"Starting SpiderFoot Tool Installer session")
+        self.logger.info(f"Platform: {platform.platform()}")
+        self.logger.info(f"Python: {sys.version}")
+        self.logger.info(f"Project directory: {self.project_dir}")
+        self.logger.info("="*60)
         
     def _setup_environment(self):
         """Setup environment variables for project-local installations."""
@@ -122,6 +149,13 @@ class ToolInstaller:
         # NPM prefix for local installations
         os.environ['NPM_CONFIG_PREFIX'] = self.tools_dir
         os.environ['NPM_CONFIG_CACHE'] = os.path.join(self.tools_dir, 'npm-cache')
+        
+        # Ruby gem paths
+        os.environ['GEM_HOME'] = os.path.join(self.tools_dir, 'gems')
+        os.environ['GEM_PATH'] = os.path.join(self.tools_dir, 'gems')
+        gem_bin = os.path.join(self.tools_dir, 'gems', 'bin')
+        if gem_bin not in current_path:
+            os.environ['PATH'] = f"{gem_bin}{os.pathsep}{os.environ['PATH']}"
         
         # Nuclei template path
         os.environ['NUCLEI_TEMPLATES_PATH'] = os.path.join(self.tools_dir, 'nuclei-templates')
@@ -237,9 +271,24 @@ class ToolInstaller:
                 description="Network discovery and security auditing",
                 version="7.90+",
                 install_methods={
+                    "debian": [
+                        "sudo apt-get update",
+                        "sudo apt-get install -y nmap",
+                        f"ln -sf $(which nmap) {os.path.join(self.bin_dir, 'nmap')}"
+                    ],
+                    "redhat": [
+                        "sudo yum install -y nmap",
+                        f"ln -sf $(which nmap) {os.path.join(self.bin_dir, 'nmap')}"
+                    ],
+                    "macos": [
+                        "brew install nmap",
+                        f"ln -sf $(which nmap) {os.path.join(self.bin_dir, 'nmap')}"
+                    ],
                     "all": [
-                        f"git clone https://github.com/nmap/nmap.git {os.path.join(self.tools_dir, 'nmap-src')}",
-                        f"cd {os.path.join(self.tools_dir, 'nmap-src')} && ./configure --prefix={self.tools_dir} && make && make install"
+                        "echo 'Please install nmap using your system package manager:'",
+                        "echo '  Debian/Ubuntu: sudo apt-get install nmap'",
+                        "echo '  RedHat/CentOS: sudo yum install nmap'",
+                        "echo '  macOS: brew install nmap'"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'nmap')} --version",
@@ -270,17 +319,28 @@ class ToolInstaller:
                 description="Web scanner to identify technologies",
                 version="0.5+",
                 install_methods={
+                    "debian": [
+                        "sudo apt-get update",
+                        "sudo apt-get install -y whatweb",
+                        f"ln -sf $(which whatweb) {os.path.join(self.bin_dir, 'whatweb')}"
+                    ],
+                    "redhat": [
+                        "sudo yum install -y epel-release",
+                        "sudo yum install -y whatweb",
+                        f"ln -sf $(which whatweb) {os.path.join(self.bin_dir, 'whatweb')}"
+                    ],
                     "all": [
-                        f"git clone https://github.com/urbanadventurer/WhatWeb.git {os.path.join(self.tools_dir, 'whatweb')}",
-                        f"cd {os.path.join(self.tools_dir, 'whatweb')} && bundle install --path vendor/bundle",
-                        f"ln -sf {os.path.join(self.tools_dir, 'whatweb', 'whatweb')} {os.path.join(self.bin_dir, 'whatweb')}"
+                        "echo 'WhatWeb installation via source requires Ruby dependencies.'",
+                        "echo 'Please install using your system package manager:'",
+                        "echo '  Debian/Ubuntu: sudo apt-get install whatweb'",
+                        "echo '  RedHat/CentOS: sudo yum install whatweb'"
                     ]
                 },
-                verify_command=f"{os.path.join(self.bin_dir, 'whatweb')} --version",
+                verify_command=f"{os.path.join(self.bin_dir, 'whatweb')} --version 2>&1 | head -1",
                 required_by=["sfp_tool_whatweb"],
                 website="https://www.morningstarsecurity.com/research/whatweb",
                 repository="https://github.com/urbanadventurer/WhatWeb",
-                dependencies=["ruby", "bundler"]
+                dependencies=[]
             ),
             
             "wappalyzer": ToolInfo(
@@ -288,7 +348,10 @@ class ToolInstaller:
                 description="Technology profiler for web applications",
                 version="6.10+",
                 install_methods={
-                    "all": [f"npm install --prefix {self.tools_dir} wappalyzer"]
+                    "all": [
+                        "npm install -g wappalyzer",
+                        f"ln -sf $(which wappalyzer) {os.path.join(self.bin_dir, 'wappalyzer')}"
+                    ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'wappalyzer')} --version",
                 required_by=["sfp_tool_wappalyzer"],
@@ -302,17 +365,21 @@ class ToolInstaller:
                 description="Web Application Firewall detection tool",
                 version="2.0+",
                 install_methods={
+                    "debian": [
+                        "which pipx >/dev/null 2>&1 || sudo apt-get install -y pipx",
+                        "pipx install wafw00f",
+                        f"ln -sf $HOME/.local/bin/wafw00f {os.path.join(self.bin_dir, 'wafw00f')}"
+                    ],
                     "all": [
-                        f"pip3 install --target={self.python_packages_dir} wafw00f",
-                        f"echo '#!/usr/bin/env python3\nimport sys\nsys.path.insert(0, \"{self.python_packages_dir}\")\nfrom wafw00f.main import main\nif __name__ == \"__main__\":\n    main()' > {os.path.join(self.bin_dir, 'wafw00f')}",
-                        f"chmod +x {os.path.join(self.bin_dir, 'wafw00f')}"
+                        "pipx install wafw00f || pip3 install --user --break-system-packages wafw00f",
+                        f"ln -sf $HOME/.local/bin/wafw00f {os.path.join(self.bin_dir, 'wafw00f')}"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'wafw00f')} --version",
                 required_by=["sfp_tool_wafw00f"],
                 website="https://github.com/EnableSecurity/wafw00f",
                 repository="https://github.com/EnableSecurity/wafw00f",
-                dependencies=["python3", "pip3"]
+                dependencies=["python3", "pipx"]
             ),
             
             "testssl": ToolInfo(
@@ -337,17 +404,21 @@ class ToolInstaller:
                 description="Search for secrets in git repositories",
                 version="3.0+",
                 install_methods={
+                    "debian": [
+                        "which pipx >/dev/null 2>&1 || sudo apt-get install -y pipx",
+                        "pipx install truffleHog3",
+                        f"ln -sf $HOME/.local/bin/trufflehog3 {os.path.join(self.bin_dir, 'trufflehog3')}"
+                    ],
                     "all": [
-                        f"pip3 install --target={self.python_packages_dir} truffleHog3",
-                        f"echo '#!/usr/bin/env python3\nimport sys\nsys.path.insert(0, \"{self.python_packages_dir}\")\nfrom truffleHog3.cli import run\nif __name__ == \"__main__\":\n    run()' > {os.path.join(self.bin_dir, 'trufflehog3')}",
-                        f"chmod +x {os.path.join(self.bin_dir, 'trufflehog3')}"
+                        "pipx install truffleHog3 || pip3 install --user --break-system-packages truffleHog3",
+                        f"ln -sf $HOME/.local/bin/trufflehog3 {os.path.join(self.bin_dir, 'trufflehog3')}"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'trufflehog3')} --version",
                 required_by=["sfp_tool_trufflehog"],
                 website="https://github.com/feeltheajf/truffleHog3",
                 repository="https://github.com/feeltheajf/truffleHog3",
-                dependencies=["python3", "pip3"]
+                dependencies=["python3", "pipx"]
             ),
             
             "retirejs": ToolInfo(
@@ -355,7 +426,10 @@ class ToolInstaller:
                 description="Scanner for JavaScript library vulnerabilities",
                 version="3.0+",
                 install_methods={
-                    "all": [f"npm install --prefix {self.tools_dir} retire"]
+                    "all": [
+                        "npm install -g retire",
+                        f"ln -sf $(which retire) {os.path.join(self.bin_dir, 'retire')}"
+                    ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'retire')} --version",
                 required_by=["sfp_tool_retirejs"],
@@ -369,17 +443,21 @@ class ToolInstaller:
                 description="Domain name permutation engine",
                 version="20201228+",
                 install_methods={
+                    "debian": [
+                        "which pipx >/dev/null 2>&1 || sudo apt-get install -y pipx",
+                        "pipx install 'dnstwist[full]'",
+                        f"ln -sf $HOME/.local/bin/dnstwist {os.path.join(self.bin_dir, 'dnstwist')}"
+                    ],
                     "all": [
-                        f"pip3 install --target={self.python_packages_dir} dnstwist[full]",
-                        f"echo '#!/usr/bin/env python3\nimport sys\nsys.path.insert(0, \"{self.python_packages_dir}\")\nfrom dnstwist import main\nif __name__ == \"__main__\":\n    main()' > {os.path.join(self.bin_dir, 'dnstwist')}",
-                        f"chmod +x {os.path.join(self.bin_dir, 'dnstwist')}"
+                        "pipx install 'dnstwist[full]' || pip3 install --user --break-system-packages 'dnstwist[full]'",
+                        f"ln -sf $HOME/.local/bin/dnstwist {os.path.join(self.bin_dir, 'dnstwist')}"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'dnstwist')} --version",
                 required_by=["sfp_tool_dnstwist"],
                 website="https://github.com/elceef/dnstwist",
                 repository="https://github.com/elceef/dnstwist",
-                dependencies=["python3", "pip3"]
+                dependencies=["python3", "pipx"]
             ),
             
             "nbtscan": ToolInfo(
@@ -387,6 +465,15 @@ class ToolInstaller:
                 description="NetBIOS scanner",
                 version="1.5+",
                 install_methods={
+                    "debian": [
+                        "sudo apt-get update",
+                        "sudo apt-get install -y nbtscan",
+                        f"ln -sf $(which nbtscan) {os.path.join(self.bin_dir, 'nbtscan')}"
+                    ],
+                    "redhat": [
+                        "sudo yum install -y nbtscan",
+                        f"ln -sf $(which nbtscan) {os.path.join(self.bin_dir, 'nbtscan')}"
+                    ],
                     "all": [
                         f"git clone https://github.com/resurrecting-open-source-projects/nbtscan.git {os.path.join(self.tools_dir, 'nbtscan-src')}",
                         f"cd {os.path.join(self.tools_dir, 'nbtscan-src')} && ./autogen.sh && ./configure --prefix={self.tools_dir} && make && make install"
@@ -420,17 +507,21 @@ class ToolInstaller:
                 description="Scan for secret files on web servers",
                 version="0.0.12+",
                 install_methods={
+                    "debian": [
+                        "which pipx >/dev/null 2>&1 || sudo apt-get install -y pipx",
+                        "pipx install snallygaster",
+                        f"ln -sf $HOME/.local/bin/snallygaster {os.path.join(self.bin_dir, 'snallygaster')}"
+                    ],
                     "all": [
-                        f"pip3 install --target={self.python_packages_dir} snallygaster",
-                        f"echo '#!/usr/bin/env python3\nimport sys\nsys.path.insert(0, \"{self.python_packages_dir}\")\nfrom snallygaster.__main__ import main\nif __name__ == \"__main__\":\n    main()' > {os.path.join(self.bin_dir, 'snallygaster')}",
-                        f"chmod +x {os.path.join(self.bin_dir, 'snallygaster')}"
+                        "pipx install snallygaster || pip3 install --user --break-system-packages snallygaster",
+                        f"ln -sf $HOME/.local/bin/snallygaster {os.path.join(self.bin_dir, 'snallygaster')}"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'snallygaster')} --version",
                 required_by=["sfp_tool_snallygaster"],
                 website="https://github.com/hannob/snallygaster",
                 repository="https://github.com/hannob/snallygaster",
-                dependencies=["python3", "pip3"]
+                dependencies=["python3", "pipx"]
             ),
             
             "cmseek": ToolInfo(
@@ -552,13 +643,27 @@ class ToolInstaller:
                 repository="https://github.com/nodejs/node"
             ),
             
+            "npm": ToolInfo(
+                name="npm",
+                description="Node.js package manager",
+                version="6+",
+                install_methods={
+                    "all": ["echo 'NPM is installed with Node.js'"]
+                },
+                verify_command=f"{os.path.join(self.bin_dir, 'npm')} --version",
+                required_by=[],
+                website="https://www.npmjs.com/",
+                repository="https://github.com/npm/cli",
+                dependencies=["node"]
+            ),
+            
             "ruby": ToolInfo(
                 name="ruby",
                 description="Ruby programming language",
                 version="2.7+",
                 install_methods={
-                    "debian": ["sudo apt-get update", "sudo apt-get install -y ruby-full"],
-                    "redhat": ["sudo yum install -y ruby"],
+                    "debian": ["sudo apt-get update", "sudo apt-get install -y ruby-full ruby-dev libyaml-dev"],
+                    "redhat": ["sudo yum install -y ruby ruby-devel libyaml-devel"],
                     "macos": ["brew install ruby"],
                     "all": ["echo 'Ruby typically requires system installation. Please install using your package manager.'"] 
                 },
@@ -573,13 +678,83 @@ class ToolInstaller:
                 description="Ruby dependency manager",
                 version="2.0+",
                 install_methods={
-                    "all": [f"gem install --install-dir {os.path.join(self.tools_dir, 'gems')} bundler"]
+                    "all": [
+                        f"gem install --install-dir {os.path.join(self.tools_dir, 'gems')} bundler",
+                        f"ln -sf {os.path.join(self.tools_dir, 'gems', 'bin', 'bundle')} {os.path.join(self.bin_dir, 'bundle')}",
+                        f"ln -sf {os.path.join(self.tools_dir, 'gems', 'bin', 'bundler')} {os.path.join(self.bin_dir, 'bundler')}"
+                    ]
                 },
-                verify_command="bundle --version",
+                verify_command=f"{os.path.join(self.bin_dir, 'bundle')} --version",
                 required_by=[],
                 website="https://bundler.io/",
                 repository="https://github.com/rubygems/bundler",
                 dependencies=["ruby"]
+            ),
+            
+            "python3": ToolInfo(
+                name="python3",
+                description="Python 3 programming language",
+                version="3.6+",
+                install_methods={
+                    "debian": ["sudo apt-get update", "sudo apt-get install -y python3 python3-pip"],
+                    "redhat": ["sudo yum install -y python3 python3-pip"],
+                    "macos": ["brew install python3"],
+                    "all": ["echo 'Python3 is usually pre-installed. Please install using your system package manager if missing.'"]
+                },
+                verify_command="python3 --version",
+                required_by=[],
+                website="https://www.python.org/",
+                repository="https://github.com/python/cpython"
+            ),
+            
+            "pip3": ToolInfo(
+                name="pip3",
+                description="Python package installer",
+                version="20.0+",
+                install_methods={
+                    "debian": ["sudo apt-get update", "sudo apt-get install -y python3-pip"],
+                    "redhat": ["sudo yum install -y python3-pip"],
+                    "macos": ["python3 -m ensurepip --upgrade"],
+                    "all": ["python3 -m ensurepip --upgrade"]
+                },
+                verify_command="pip3 --version",
+                required_by=[],
+                website="https://pip.pypa.io/",
+                repository="https://github.com/pypa/pip",
+                dependencies=["python3"]
+            ),
+            
+            "git": ToolInfo(
+                name="git",
+                description="Distributed version control system",
+                version="2.0+",
+                install_methods={
+                    "debian": ["sudo apt-get update", "sudo apt-get install -y git"],
+                    "redhat": ["sudo yum install -y git"],
+                    "macos": ["brew install git"],
+                    "all": ["echo 'Git is usually pre-installed. Please install using your system package manager if missing.'"]
+                },
+                verify_command="git --version",
+                required_by=[],
+                website="https://git-scm.com/",
+                repository="https://github.com/git/git"
+            ),
+            
+            "pipx": ToolInfo(
+                name="pipx",
+                description="Install and Run Python Applications in Isolated Environments",
+                version="1.0+",
+                install_methods={
+                    "debian": ["sudo apt-get update", "sudo apt-get install -y pipx", "pipx ensurepath"],
+                    "redhat": ["python3 -m pip install --user pipx", "python3 -m pipx ensurepath"],
+                    "macos": ["brew install pipx", "pipx ensurepath"],
+                    "all": ["python3 -m pip install --user pipx", "python3 -m pipx ensurepath"]
+                },
+                verify_command="pipx --version",
+                required_by=[],
+                website="https://pipx.pypa.io/",
+                repository="https://github.com/pypa/pipx",
+                dependencies=["python3"]
             )
         }
         
@@ -593,13 +768,26 @@ class ToolInstaller:
         tool = self.tools_config[tool_name]
         
         try:
-            result = subprocess.run(
-                tool.verify_command.split(),
-                capture_output=True,
-                text=True,
-                timeout=10,
-                env=os.environ.copy()
-            )
+            # Use shell=True if command contains pipes or redirections
+            use_shell = any(char in tool.verify_command for char in ['|', '>', '<', '&'])
+            
+            if use_shell:
+                result = subprocess.run(
+                    tool.verify_command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=os.environ.copy()
+                )
+            else:
+                result = subprocess.run(
+                    tool.verify_command.split(),
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env=os.environ.copy()
+                )
             
             if result.returncode == 0:
                 version = result.stdout.strip() or result.stderr.strip()
@@ -622,8 +810,33 @@ class ToolInstaller:
         
         for dep in tool.dependencies:
             if dep not in self.tools_config:
-                self.logger.warning(f"Unknown dependency: {dep}")
-                continue
+                # Check if it's a system dependency that might already be installed
+                if dep in ['python3', 'pip3', 'ruby', 'git']:
+                    # Try to verify if it's already installed using common commands
+                    check_commands = {
+                        'python3': 'python3 --version',
+                        'pip3': 'pip3 --version',
+                        'ruby': 'ruby --version',
+                        'git': 'git --version'
+                    }
+                    if dep in check_commands:
+                        try:
+                            result = subprocess.run(
+                                check_commands[dep].split(),
+                                capture_output=True,
+                                text=True,
+                                timeout=5
+                            )
+                            if result.returncode == 0:
+                                self.logger.info(f"✓ {dep} is already installed (system): {result.stdout.strip()}")
+                                continue
+                        except:
+                            pass
+                    self.logger.warning(f"Dependency {dep} not found in tools config and not installed")
+                    return False
+                else:
+                    self.logger.warning(f"Unknown dependency: {dep}")
+                    continue
                 
             installed, _ = self.check_tool(dep)
             if not installed:
@@ -671,26 +884,28 @@ class ToolInstaller:
             self.logger.debug(f"Executing: {cmd}")
             
             try:
-                # Handle special cases
-                if cmd.startswith("cd "):
-                    # Change directory command
-                    os.chdir(cmd[3:])
-                    continue
-                    
-                # Use shell=True for complex commands
+                # Always use shell=True for all commands to handle complex shell operations
+                # This allows proper handling of &&, ||, cd, and other shell constructs
                 result = subprocess.run(
                     cmd,
                     shell=True,
                     capture_output=True,
                     text=True,
                     timeout=300,  # 5 minute timeout
-                    env=os.environ.copy()
+                    env=os.environ.copy(),
+                    cwd=self.project_dir  # Set working directory to project root
                 )
                 
                 if result.returncode != 0:
                     self.logger.error(f"Command failed: {cmd}")
+                    self.logger.error(f"Return code: {result.returncode}")
                     self.logger.error(f"Error: {result.stderr}")
+                    if result.stdout:
+                        self.logger.error(f"Output: {result.stdout}")
                     return False
+                else:
+                    if result.stdout:
+                        self.logger.debug(f"Command output: {result.stdout}")
                     
             except subprocess.TimeoutExpired:
                 self.logger.error(f"Command timed out: {cmd}")
@@ -898,6 +1113,7 @@ Examples:
     # Handle commands
     if args.list:
         installer.list_tools()
+        print(f"\n📄 Installation log saved to: {installer.log_file}")
         
     elif args.all:
         results = installer.install_all()
@@ -913,6 +1129,8 @@ Examples:
             for tool, result in results.items():
                 if not result:
                     print(f"  - {tool}")
+        
+        print(f"\n📄 Installation log saved to: {installer.log_file}")
                     
     elif args.install:
         results = {}
@@ -933,16 +1151,19 @@ Examples:
                 if not result:
                     print(f"  - {tool}")
         
+        print(f"\n📄 Installation log saved to: {installer.log_file}")
         sys.exit(0 if success_count == total_count else 1)
         
     elif args.check:
         installer.list_tools()
+        print(f"\n📄 Installation log saved to: {installer.log_file}")
         
     elif args.dockerfile:
         print(installer.generate_dockerfile())
         
     else:
         parser.print_help()
+        print(f"\n📄 Installation log saved to: {installer.log_file}")
 
 
 if __name__ == "__main__":
