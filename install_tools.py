@@ -303,8 +303,15 @@ class ToolInstaller:
                 version="2.9+",
                 install_methods={
                     "all": [
-                        f"GOPATH={os.path.join(self.tools_dir, 'go')} GOBIN={self.bin_dir} go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest",
-                        f"HOME={self.tools_dir} {os.path.join(self.bin_dir, 'nuclei')} -update-templates"
+                        # Check if nuclei is already installed system-wide
+                        f"if command -v nuclei >/dev/null 2>&1; then "
+                        f"echo 'Using system nuclei'; "
+                        f"ln -sf $(which nuclei) {os.path.join(self.bin_dir, 'nuclei')}; "
+                        f"else "
+                        f"echo 'Installing nuclei via Go'; "
+                        f"GOPATH={os.path.join(self.tools_dir, 'go')} GOBIN={self.bin_dir} go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest; "
+                        f"fi",
+                        f"{os.path.join(self.bin_dir, 'nuclei')} -update-templates -ud {os.path.join(self.tools_dir, 'nuclei-templates')}"
                     ]
                 },
                 verify_command=f"{os.path.join(self.bin_dir, 'nuclei')} -version",
