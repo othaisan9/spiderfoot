@@ -160,7 +160,7 @@ class sfp_tool_nuclei(SpiderFootPlugin):
             args = [
                 exe,
                 "-silent",
-                "-json",
+                "-jsonl",  # Changed from -json to -jsonl
                 "-concurrency",
                 "100",
                 "-retries",
