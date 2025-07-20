@@ -153,6 +153,9 @@ class SpiderFootHelpers():
             # Skip archived modules directory
             if 'archived_modules' in root:
                 continue
+            # Skip backup directory
+            if 'backup' in root:
+                continue
                 
             for filename in files:
                 if not filename.startswith("sfp_"):
