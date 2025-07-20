@@ -134,6 +134,12 @@ echo "dbms.security.procedures.unrestricted=apoc.*,gds.*" >> conf/neo4j.conf
 - **Graceful Degradation**: Fallback when graph database unavailable
 - **Transaction Management**: ACID compliance for data integrity
 
+### **Module Enhancements**
+- **Web Spider File Extension Filtering**: New configurable option to control file type filtering
+  - `enable_filterfiles`: Toggle file extension filtering on/off
+  - Allows selective collection of image files and other file types when needed
+  - Maintains backward compatibility with existing filtering behavior
+
 ---
 
 ## 📊 **Use Cases & Examples**

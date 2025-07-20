@@ -128,6 +128,44 @@ input[type="checkbox"] {
   display: none;
 }
 
+/* BAT INTELLIGENCE Logo Styles */
+.bat-logo-container {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+}
+
+.bat-logo {
+  height: 30px;
+  display: none;
+}
+
+.bat-logo.light {
+  display: block;
+}
+
+/* Show/hide logos based on theme */
+body.dark-theme .bat-logo.light,
+body.dark-theme .brand-logo.light {
+  display: none;
+}
+
+body.dark-theme .bat-logo.dark,
+body.dark-theme .brand-logo.dark {
+  display: block;
+}
+
+body:not(.dark-theme) .bat-logo.dark,
+body:not(.dark-theme) .brand-logo.dark {
+  display: none;
+}
+
+body:not(.dark-theme) .bat-logo.light,
+body:not(.dark-theme) .brand-logo.light {
+  display: block;
+}
+
 /* THEME TOGGLER PROPERTIES */
 
 #toggler-text{

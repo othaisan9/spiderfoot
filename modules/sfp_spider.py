@@ -35,6 +35,7 @@ class sfp_spider(SpiderFootPlugin):
         'maxlevels': 3,  # max number of levels to traverse within a site
         'usecookies': True,  # Use cookies?
         'start': ['http://', 'https://'],
+        'enable_filterfiles': True,  # Enable file extension filtering?
         'filterfiles': ['png', 'gif', 'jpg', 'jpeg', 'tiff', 'tif', 'tar',
                         'pdf', 'ico', 'flv', 'mp4', 'mp3', 'avi', 'mpg', 'gz',
                         'mpeg', 'iso', 'dat', 'mov', 'swf', 'rar', 'exe', 'zip',
@@ -54,7 +55,8 @@ class sfp_spider(SpiderFootPlugin):
         'start': "Prepend targets with these until you get a hit, to start spidering.",
         'maxpages': "Maximum number of pages to fetch per starting point identified.",
         'maxlevels': "Maximum levels to traverse per starting point (e.g. hostname or link identified by another module) identified.",
-        'filterfiles': "File extensions to ignore (don't fetch them.)",
+        'enable_filterfiles': "Enable file extension filtering? If disabled, all file types will be fetched.",
+        'filterfiles': "File extensions to ignore (don't fetch them.) - Only works if enable_filterfiles is True.",
         'filtermime': "MIME types to ignore.",
         'filterusers': "Skip spidering of /~user directories?",
         'nosubs': "Skip spidering of subdomains of the target?",
@@ -111,8 +113,8 @@ class sfp_spider(SpiderFootPlugin):
         cookies = None
 
         # Filter out certain file types (if user chooses to)
-        if list(filter(lambda ext: url.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
-            # self.debug(f"Ignoring URL with filtered file extension: {link}")
+        if self.opts['enable_filterfiles'] and list(filter(lambda ext: url.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
+            self.debug(f"Ignoring URL with filtered file extension: {url}")
             return None
 
         if site in self.siteCookies:
@@ -238,6 +240,11 @@ class sfp_spider(SpiderFootPlugin):
 
     # Notify listening modules about links
     def linkNotify(self, url: str, parentEvent=None):
+        # Filter out certain file types before notifying
+        if self.opts['enable_filterfiles'] and list(filter(lambda ext: url.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
+            self.debug(f"Ignoring URL with filtered file extension in linkNotify: {url}")
+            return None
+            
         if self.getTarget().matches(self.sf.urlFQDN(url)):
             utype = "LINKED_URL_INTERNAL"
         else:
@@ -350,6 +357,11 @@ class sfp_spider(SpiderFootPlugin):
 
         if not spiderTarget:
             self.info(f"No reply from {eventData}, aborting.")
+            return None
+
+        # Filter out certain file types before spidering
+        if self.opts['enable_filterfiles'] and list(filter(lambda ext: spiderTarget.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
+            self.debug(f"Ignoring URL with filtered file extension in handleEvent: {spiderTarget}")
             return None
 
         self.debug(f"Initiating spider of {spiderTarget} from {srcModuleName}")
