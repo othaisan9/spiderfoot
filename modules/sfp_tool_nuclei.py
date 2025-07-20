@@ -109,6 +109,11 @@ class sfp_tool_nuclei(SpiderFootPlugin):
             self.error(f"File does not exist: {exe}")
             self.errorState = True
             return
+            
+        if not os.path.isdir(self.opts['template_path']):
+            self.error(f"Template directory does not exist: {self.opts['template_path']}")
+            self.errorState = True
+            return
 
         if not SpiderFootHelpers.sanitiseInput(eventData, extra=['/']):
             self.debug("Invalid input, skipping.")
@@ -174,8 +179,12 @@ class sfp_tool_nuclei(SpiderFootPlugin):
                 if p.returncode == 0:
                     content = stdout.decode(sys.stdout.encoding)
                 else:
-                    self.error("Unable to read Nuclei content.")
-                    self.debug(f"Error running Nuclei: {stderr}, {stdout}")
+                    stderr_text = stderr.decode(sys.stderr.encoding) if stderr else "No stderr"
+                    stdout_text = stdout.decode(sys.stdout.encoding) if stdout else "No stdout"
+                    self.error(f"Nuclei returned error code {p.returncode}")
+                    self.error(f"Nuclei stderr: {stderr_text}")
+                    self.error(f"Nuclei stdout: {stdout_text}")
+                    self.error(f"Nuclei command: {' '.join(args)}")
                     return
             except TimeoutExpired:
                 p.kill()
