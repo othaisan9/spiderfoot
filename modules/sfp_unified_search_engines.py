@@ -16,7 +16,7 @@ import time
 import urllib.parse
 from typing import List, Dict, Set, Optional
 
-from spiderfoot import SpiderFootEvent, SpiderFootPlugin
+from spiderfoot import SpiderFootEvent, SpiderFootPlugin, SpiderFootHelpers
 
 
 class sfp_unified_search_engines(SpiderFootPlugin):
@@ -291,7 +291,7 @@ class sfp_unified_search_engines(SpiderFootPlugin):
                 self.notifyListeners(evt)
 
             # Extract emails from snippet
-            for email in self.sf.parseEmails(snippet):
+            for email in SpiderFootHelpers.extractEmailsFromText(snippet):
                 if email not in emails:
                     emails.add(email)
                     evt = SpiderFootEvent("EMAILADDR", email, self.__name__, source_event)
