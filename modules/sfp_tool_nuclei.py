@@ -207,6 +207,12 @@ class sfp_tool_nuclei(SpiderFootPlugin):
                 srcevent = event
                 host = data['matched-at'].split(":")[0]
                 if host != eventData:
+                    # Check if we've already processed this host to prevent loops
+                    if host in self.results:
+                        self.debug(f"Skipping {host} as already processed")
+                        continue
+                    self.results[host] = True
+                    
                     if self.sf.validIP(host):
                         srctype = "IP_ADDRESS"
                     else:
