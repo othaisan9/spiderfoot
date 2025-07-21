@@ -38,16 +38,18 @@ class sfp_s3bucket(SpiderFootPlugin):
 
     # Default options
     opts = {
-        "endpoints": "s3.amazonaws.com,s3-external-1.amazonaws.com,s3-us-west-1.amazonaws.com,s3-us-west-2.amazonaws.com,s3.ap-south-1.amazonaws.com,s3-ap-south-1.amazonaws.com,s3.ap-northeast-2.amazonaws.com,s3-ap-northeast-2.amazonaws.com,s3-ap-southeast-1.amazonaws.com,s3-ap-southeast-2.amazonaws.com,s3-ap-northeast-1.amazonaws.com,s3.eu-central-1.amazonaws.com,s3-eu-central-1.amazonaws.com,s3-eu-west-1.amazonaws.com,s3-sa-east-1.amazonaws.com",
-        "suffixes": "test,dev,web,beta,bucket,space,files,content,data,prod,staging,production,stage,app,media,development,-test,-dev,-web,-beta,-bucket,-space,-files,-content,-data,-prod,-staging,-production,-stage,-app,-media,-development",
-        "_maxthreads": 20
+        "endpoints": "s3.amazonaws.com,s3-us-west-2.amazonaws.com,s3-eu-west-1.amazonaws.com",  # Reduced to 3 main endpoints
+        "suffixes": "test,dev,prod,staging,bucket,files,-test,-dev,-prod,-staging",  # Reduced to 10 most common suffixes
+        "_maxthreads": 10,  # Reduced thread count
+        "max_buckets_per_domain": 20  # New option to limit buckets per domain
     }
 
     # Option descriptions
     optdescs = {
         "endpoints": "Different S3 endpoints to check where buckets may exist, as per http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region",
         "suffixes": "List of suffixes to append to domains tried as bucket names",
-        "_maxthreads": "Maximum threads"
+        "_maxthreads": "Maximum threads",
+        "max_buckets_per_domain": "Maximum number of bucket variations to check per domain"
     }
 
     results = None
@@ -72,7 +74,7 @@ class sfp_s3bucket(SpiderFootPlugin):
         return ["CLOUD_STORAGE_BUCKET", "CLOUD_STORAGE_BUCKET_OPEN"]
 
     def checkSite(self, url):
-        res = self.sf.fetchUrl(url, timeout=10, useragent="SpiderFoot", noLog=True)
+        res = self.sf.fetchUrl(url, timeout=5, useragent="SpiderFoot", noLog=True)  # Reduced timeout
 
         if not res['content']:
             return
@@ -178,15 +180,25 @@ class sfp_s3bucket(SpiderFootPlugin):
 
         urls = list()
         for t in targets:
+            bucket_count = 0
             for e in self.opts['endpoints'].split(','):
                 suffixes = [''] + self.opts['suffixes'].split(',')
                 for s in suffixes:
                     if self.checkForStop():
                         return
 
+                    # Limit buckets per domain
+                    if bucket_count >= self.opts.get('max_buckets_per_domain', 20):
+                        self.debug(f"Reached max bucket limit ({self.opts.get('max_buckets_per_domain', 20)}) for domain {t}")
+                        break
+
                     b = t + s + "." + e
                     url = "https://" + b
                     urls.append(url)
+                    bucket_count += 1
+                
+                if bucket_count >= self.opts.get('max_buckets_per_domain', 20):
+                    break
 
         # Batch the scans
         ret = self.batchSites(urls)
