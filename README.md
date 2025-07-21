@@ -130,6 +130,52 @@ python install_tools.py --all
 
 Check out the [documentation](https://www.spiderfoot.net/documentation) and our [asciinema videos](https://asciinema.org/~spiderfoot) for more tutorials.
 
+### DARKWEB SCANNING WITH TOR
+
+SpiderFoot includes scripts for easy darkweb scanning through Tor:
+
+#### Using darkweb_scan.sh (Bash script)
+```bash
+./darkweb_scan.sh
+```
+This script:
+- Automatically checks if Tor is installed
+- Starts Tor service if not running
+- Configures SpiderFoot with Tor SOCKS5 proxy (127.0.0.1:9050)
+- Shows recommended darkweb modules
+
+#### Using darkweb_scan.py (Python script)
+```bash
+./darkweb_scan.py
+
+# With custom options
+./darkweb_scan.py -p 5002 --tor-port 9150
+```
+This script provides:
+- Tor installation and status checking
+- Tor connection testing
+- Customizable ports and interfaces
+- Better error handling
+
+#### Manual Tor Configuration
+You can also run SpiderFoot with Tor proxy manually:
+```bash
+python3 sf.py -l 0.0.0.0:5001 -o _socks1type=5 -o _socks2addr=127.0.0.1 -o _socks3port=9050
+```
+
+Recommended modules for darkweb scanning:
+- **ahmia**: Tor search engine
+- **torexits**: Check for Tor exit nodes
+- **torch**: Another Tor search engine
+- **onionsearchengine**: Search for .onion sites
+- **bitcoin/bitcoinabuse**: Cryptocurrency tracking
+
+**Note**: Ensure Tor is installed first:
+```bash
+sudo apt-get install tor
+sudo service tor start
+```
+
 ### COMMUNITY
 
 Whether you're a contributor, user or just curious about SpiderFoot and OSINT in general, we'd love to have you join our community! SpiderFoot now has a [Discord server](https://discord.gg/vyvztrG) for seeking help from the community, requesting features or just general OSINT chit-chat.
