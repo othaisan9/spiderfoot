@@ -167,7 +167,20 @@ class sfp_tldsearch(SpiderFootPlugin):
 
         self.debug(f"Keyword extracted from {eventData}: {keyword}")
 
+        # Check if keyword was already processed
         if keyword in self.results:
+            self.debug(f"Keyword {keyword} already processed, skipping")
+            return
+
+        # Skip if keyword is too short or generic
+        if len(keyword) < 4:
+            self.debug(f"Keyword {keyword} too short, skipping")
+            return
+            
+        # Skip if we've already found many domains for this target
+        similar_count = sum(1 for k in self.results.keys() if k.endswith('.') and keyword in k)
+        if similar_count >= self.opts['max_results']:
+            self.info(f"Already found {similar_count} similar domains, stopping search")
             return
 
         self.results[keyword] = True
@@ -231,6 +244,13 @@ class sfp_tldsearch(SpiderFootPlugin):
                     if result and domain not in self.results:
                         # Check if target matches (avoid self-reference)
                         if self.getTarget().matches(domain, includeParents=True, includeChildren=True):
+                            continue
+                        
+                        # Skip domains that are too similar to already found ones
+                        domain_base = domain.split('.')[0]
+                        similar_bases = [d.split('.')[0] for d in self.results.keys() if '.' in d]
+                        if any(base in domain_base or domain_base in base for base in similar_bases):
+                            self.debug(f"Skipping {domain} - too similar to existing results")
                             continue
                         
                         # Check for active content if required

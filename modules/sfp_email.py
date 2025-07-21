@@ -24,13 +24,16 @@ class sfp_email(SpiderFootPlugin):
     }
 
     opts = {
+        "max_emails": 100  # Limit total emails to prevent cascading
     }
 
     optdescs = {
+        "max_emails": "Maximum number of email addresses to process (0 = unlimited)"
     }
 
     def setup(self, sfc, userOpts=dict()):
         self.sf = sfc
+        self.email_count = 0
 
         for opt in userOpts.keys():
             self.opts[opt] = userOpts[opt]
@@ -55,6 +58,12 @@ class sfp_email(SpiderFootPlugin):
         eventData = event.data
 
         self.debug(f"Received event, {eventName}, from {srcModuleName}")
+        
+        # Check if we've reached the email limit
+        max_emails = self.opts.get('max_emails', 100)
+        if max_emails > 0 and self.email_count >= max_emails:
+            self.debug(f"Reached maximum email limit ({max_emails}), skipping")
+            return
 
         emails = SpiderFootHelpers.extractEmailsFromText(eventData)
         for email in set(emails):
@@ -79,6 +88,9 @@ class sfp_email(SpiderFootPlugin):
 
             self.info(f"Found e-mail address: {email}")
             mail = email.strip('.')
+            
+            # Increment email count
+            self.email_count += 1
 
             evt = SpiderFootEvent(evttype, mail, self.__name__, event)
             if event.moduleDataSource:
@@ -86,5 +98,10 @@ class sfp_email(SpiderFootPlugin):
             else:
                 evt.moduleDataSource = "Unknown"
             self.notifyListeners(evt)
+            
+            # Check limit after notifying
+            if max_emails > 0 and self.email_count >= max_emails:
+                self.info(f"Reached maximum email limit ({max_emails}), stopping")
+                break
 
 # End of sfp_email class
