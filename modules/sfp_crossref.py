@@ -29,18 +29,28 @@ class sfp_crossref(SpiderFootPlugin):
     }
 
     opts = {
-        'checkbase': True
+        'checkbase': True,
+        'checkaffiliates': True,
+        'checkcohosts': True,
+        'checksimilardomains': False,  # Disabled by default to prevent excessive requests
+        'maxsimilardomains': 10  # Maximum similar domains to check
     }
 
     optdescs = {
-        "checkbase": "Check the base URL of the potential affiliate if no direct affiliation found?"
+        "checkbase": "Check the base URL of the potential affiliate if no direct affiliation found?",
+        "checkaffiliates": "Check affiliates for cross-references?",
+        "checkcohosts": "Check co-hosted sites for cross-references?",
+        "checksimilardomains": "Check similar domains for cross-references? (Can be slow)",
+        "maxsimilardomains": "Maximum number of similar domains to check"
     }
 
     fetched = None
+    similarDomainCount = 0
 
     def setup(self, sfc, userOpts=dict()):
         self.sf = sfc
         self.fetched = self.tempStorage()
+        self.similarDomainCount = 0
 
         for opt in list(userOpts.keys()):
             self.opts[opt] = userOpts[opt]
@@ -65,6 +75,24 @@ class sfp_crossref(SpiderFootPlugin):
         eventData = event.data
 
         self.debug(f"Received event, {eventName}, from {srcModuleName}")
+
+        # Check if we should process SIMILARDOMAIN events
+        if eventName == 'SIMILARDOMAIN':
+            if not self.opts['checksimilardomains']:
+                self.debug(f"Skipping SIMILARDOMAIN event as checksimilardomains is False")
+                return
+            
+            # Check if we've hit the similar domain limit
+            if self.similarDomainCount >= self.opts['maxsimilardomains']:
+                self.debug(f"Skipping SIMILARDOMAIN event - reached limit of {self.opts['maxsimilardomains']}")
+                return
+            
+            self.similarDomainCount += 1
+
+        # Check if we should process CO_HOSTED_SITE events
+        if eventName == 'CO_HOSTED_SITE' and not self.opts['checkcohosts']:
+            self.debug(f"Skipping CO_HOSTED_SITE event as checkcohosts is False")
+            return
 
         # SIMILARDOMAIN and CO_HOSTED_SITE events are domains, not URLs.
         # Assume HTTP.
