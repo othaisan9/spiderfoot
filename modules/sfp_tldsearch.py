@@ -32,18 +32,20 @@ class sfp_tldsearch(SpiderFootPlugin):
     opts = {
         'activeonly': False,  # Only report domains that have content (try to fetch the page)
         'skipwildcards': True,
-        '_maxthreads': 100,  # Increased for ThreadPoolExecutor
-        'max_results': 50,   # Maximum results before stopping
+        '_maxthreads': 50,   # Reduced to prevent overload
+        'max_results': 20,   # Reduced to limit cascade effects
         'priority_tlds': True,  # Check common TLDs first
+        'check_timeout': 30,  # Timeout per domain check (seconds)
     }
 
     # Option descriptions
     optdescs = {
         'activeonly': "Only report domains that have content (try to fetch the page)?",
         'skipwildcards': "Skip TLDs and sub-TLDs that have wildcard DNS.",
-        '_maxthreads': "Maximum threads (increased for better performance)",
+        '_maxthreads': "Maximum threads for concurrent checks",
         'max_results': "Maximum number of similar domains to find before stopping (0 = unlimited)",
         'priority_tlds': "Check common TLDs (.com, .net, .org, etc.) first?",
+        'check_timeout': "Timeout per domain check in seconds",
     }
 
     # Priority TLDs that are checked first
@@ -222,7 +224,9 @@ class sfp_tldsearch(SpiderFootPlugin):
                 domain, tld = future_to_domain[future]
                 
                 try:
-                    result = future.result(timeout=2)
+                    # Use configurable timeout
+                    check_timeout = self.opts.get('check_timeout', 30)
+                    result = future.result(timeout=check_timeout)
                     
                     if result and domain not in self.results:
                         # Check if target matches (avoid self-reference)
