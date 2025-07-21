@@ -239,3 +239,46 @@ input:checked + .slider:before {
 .download-button {
   padding: 6px 12px !important;
 }
+
+/* Console Log Styles */
+.console-log-container {
+  background-color: #1e1e1e;
+  border-top: 2px solid #333;
+  color: #ddd;
+}
+
+.console-log-header {
+  background-color: #2d2d2d;
+  color: #fff;
+  border-bottom: 1px solid #444;
+}
+
+.console-log-content {
+  background-color: #1e1e1e;
+  color: #ddd;
+}
+
+/* Console log colors */
+.console-error {
+  color: #ff6b6b;
+}
+
+.console-warning {
+  color: #ffa500;
+}
+
+.console-info {
+  color: #4ecdc4;
+}
+
+.console-debug {
+  color: #888;
+}
+
+.console-timestamp {
+  color: #666;
+}
+
+.console-component {
+  color: #95a5a6;
+}
