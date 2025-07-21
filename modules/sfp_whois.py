@@ -14,6 +14,7 @@
 import ipwhois
 import netaddr
 import whois
+import time
 
 from spiderfoot import SpiderFootEvent, SpiderFootPlugin
 
@@ -37,10 +38,14 @@ class sfp_whois(SpiderFootPlugin):
     }
 
     results = None
-
+    failed_queries = None  # Track failed WHOIS queries to avoid retries
+    last_query_time = 0  # Track last WHOIS query time for rate limiting
+    
     def setup(self, sfc, userOpts=dict()):
         self.sf = sfc
         self.results = self.tempStorage()
+        self.failed_queries = self.tempStorage()
+        self.last_query_time = 0
 
         for opt in list(userOpts.keys()):
             self.opts[opt] = userOpts[opt]
@@ -67,6 +72,11 @@ class sfp_whois(SpiderFootPlugin):
         if eventData in self.results:
             return
 
+        # Check if we've already failed to query this domain
+        if eventData in self.failed_queries:
+            self.debug(f"Skipping {eventData} - previous WHOIS query failed")
+            return
+
         self.results[eventData] = True
 
         self.debug(f"Received event, {eventName}, from {srcModuleName}")
@@ -86,6 +96,16 @@ class sfp_whois(SpiderFootPlugin):
             return
 
         data = None
+        
+        # Rate limiting: wait at least 2 seconds between WHOIS queries
+        current_time = time.time()
+        time_since_last = current_time - self.last_query_time
+        if time_since_last < 2:
+            wait_time = 2 - time_since_last
+            self.debug(f"Rate limiting: waiting {wait_time:.1f} seconds")
+            time.sleep(wait_time)
+        
+        self.last_query_time = time.time()
 
         if eventName in ["NETBLOCK_OWNER", "NETBLOCKV6_OWNER"]:
             try:
@@ -110,14 +130,17 @@ class sfp_whois(SpiderFootPlugin):
                 data = str(whoisdata.text)
             except Exception as e:
                 self.error(f"Unable to perform WHOIS query on {eventData}: {e}")
+                self.failed_queries[eventData] = True
 
         if not data:
             self.error(f"No WHOIS record for {eventData}")
+            self.failed_queries[eventData] = True
             return
 
         # This is likely to be an error about being throttled rather than real data
         if len(str(data)) < 250:
             self.error(f"WHOIS data ({len(data)} bytes) is smaller than 250 bytes. Throttling from WHOIS server is probably happening. Ignoring response.")
+            self.failed_queries[eventData] = True
             return
 
         rawevt = SpiderFootEvent(typ, data, self.__name__, event)
