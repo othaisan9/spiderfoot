@@ -105,6 +105,16 @@ class sfp_tool_nuclei(SpiderFootPlugin):
         if eventData in self.results:
             self.debug(f"Already processed {eventData}, skipping")
             return
+        
+        # Skip Office/Microsoft related domains early to prevent loops
+        office_patterns = [
+            'outlook.com', 'office.com', 'office365.com', 'microsoft.com',
+            'microsoftonline.com', 'autodiscover', 'tm-4.office', 'atod-g2',
+            'sharepoint.com', 'onedrive.com', 'live.com'
+        ]
+        if any(pattern in eventData.lower() for pattern in office_patterns):
+            self.debug(f"Skipping Office/Microsoft domain: {eventData}")
+            return
 
         exe = self.opts['nuclei_path']
         if self.opts['nuclei_path'].endswith('/'):
@@ -174,7 +184,7 @@ class sfp_tool_nuclei(SpiderFootPlugin):
             return
 
         # Try to run Nuclei with improved settings and retry logic
-        max_retries = 2  # Reduced from 3 to 2
+        max_retries = 1  # Further reduced to prevent long waits
         retry_count = 0
         content = ""
         
@@ -185,13 +195,15 @@ class sfp_tool_nuclei(SpiderFootPlugin):
                     "-silent",
                     "-jsonl",  # Changed from -json to -jsonl
                     "-concurrency",
-                    "10",  # Reduced from 100 to prevent overload
+                    "5",  # Further reduced to prevent overload
                     "-rate-limit",
-                    "10",  # Add rate limiting
+                    "5",  # Stricter rate limiting
                     "-timeout",
-                    "5",  # Reduced per-request timeout
+                    "3",  # Further reduced per-request timeout
                     "-retries",
                     "0",  # No retries at nuclei level
+                    "-max-host-errors",
+                    "1",  # Stop scanning host after 1 error
                     "-t",
                     self.opts["template_path"],
                     "-no-interactsh",
@@ -240,9 +252,6 @@ class sfp_tool_nuclei(SpiderFootPlugin):
             except BaseException as e:
                 self.error(f"Unable to run Nuclei: {e}")
                 return
-            
-            # If we reach here without content, break to avoid infinite loop
-            break
 
         if not content:
             return
@@ -268,13 +277,19 @@ class sfp_tool_nuclei(SpiderFootPlugin):
                         # Skip common CDN/cloud hostnames that cause loops
                         skip_patterns = [
                             'outlook.com',
+                            'office.com',
                             'office365.com',
+                            'microsoft.com',
+                            'microsoftonline.com',
                             'cloudflare',
                             'akamai',
                             'amazonaws.com',
                             'azure',
                             'google',
-                            'facebook'
+                            'facebook',
+                            'autodiscover',
+                            'tm-4.office',
+                            'atod-g2'
                         ]
                         if any(pattern in host.lower() for pattern in skip_patterns):
                             self.debug(f"Skipping cloud/CDN host: {host}")
