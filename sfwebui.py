@@ -262,7 +262,8 @@ class SpiderFootWebUi:
 
         try:
             data = dbh.search(criteria)
-        except Exception:
+        except Exception as e:
+            self.log.error(f"Database search failed: {e}")
             return retdata
 
         for row in data:
@@ -343,7 +344,8 @@ class SpiderFootWebUi:
 
         try:
             data = dbh.scanLogs(id, None, None, True)
-        except Exception:
+        except Exception as e:
+            self.log.error(f"Failed to retrieve scan logs for ID {id}: {e}")
             return self.error("Scan ID not found.")
 
         if not data:
@@ -840,6 +842,8 @@ class SpiderFootWebUi:
             p = mp.Process(target=startSpiderFootScanner, args=(self.loggingQueue, scanname, scanId, scantarget, targetType, modlist, cfg))
             p.daemon = True
             p.start()
+            # Close the process handle to avoid resource leak
+            p.close()
         except Exception as e:
             self.log.error(f"[-] Scan [{scanId}] failed: {e}")
             return self.error(f"[-] Scan [{scanId}] failed: {e}")
@@ -894,6 +898,8 @@ class SpiderFootWebUi:
                 p = mp.Process(target=startSpiderFootScanner, args=(self.loggingQueue, scanname, scanId, scantarget, targetType, modlist, cfg))
                 p.daemon = True
                 p.start()
+                # Close the process handle to avoid resource leak
+                p.close()
             except Exception as e:
                 self.log.error(f"[-] Scan [{scanId}] failed: {e}")
                 return self.error(f"[-] Scan [{scanId}] failed: {e}")
@@ -913,12 +919,26 @@ class SpiderFootWebUi:
         Returns:
             str: New scan page HTML
         """
+        import json
+        import os
+        
         dbh = SpiderFootDb(self.config)
         types = dbh.eventTypes()
+        
+        # Load module categories
+        module_categories = {'categories': {}}
+        try:
+            cat_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'module_categories.json')
+            with open(cat_file, 'r', encoding='utf-8') as f:
+                module_categories = json.load(f)
+        except Exception as e:
+            self.log.warning(f"Could not load module categories: {e}")
+        
         templ = Template(filename='spiderfoot/templates/newscan.tmpl', lookup=self.lookup)
         return templ.render(pageid='NEWSCAN', types=types, docroot=self.docroot,
                             modules=self.config['__modules__'], scanname="",
-                            selectedmods="", scantarget="", version=__version__)
+                            selectedmods="", scantarget="", version=__version__,
+                            module_categories=module_categories)
 
     @cherrypy.expose
     def clonescan(self: 'SpiderFootWebUi', id: str) -> str:
@@ -951,12 +971,24 @@ class SpiderFootWebUi:
             scantarget = "&quot;" + scantarget + "&quot;"
 
         modlist = scanconfig['_modulesenabled'].split(',')
+        
+        # Load module categories
+        import json
+        import os
+        module_categories = {'categories': {}}
+        try:
+            cat_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'module_categories.json')
+            with open(cat_file, 'r', encoding='utf-8') as f:
+                module_categories = json.load(f)
+        except Exception as e:
+            self.log.warning(f"Could not load module categories: {e}")
 
         templ = Template(filename='spiderfoot/templates/newscan.tmpl', lookup=self.lookup)
         return templ.render(pageid='NEWSCAN', types=types, docroot=self.docroot,
                             modules=self.config['__modules__'], selectedmods=modlist,
                             scanname=str(scanname),
-                            scantarget=str(scantarget), version=__version__)
+                            scantarget=str(scantarget), version=__version__,
+                            module_categories=module_categories)
 
     @cherrypy.expose
     def index(self: 'SpiderFootWebUi') -> str:
@@ -1203,7 +1235,8 @@ class SpiderFootWebUi:
             dbh = SpiderFootDb(self.config)
             dbh.configClear()  # Clear it in the DB
             self.config = deepcopy(self.defaultConfig)  # Clear in memory
-        except Exception:
+        except Exception as e:
+            self.log.error(f"Failed to reset config: {e}")
             return False
 
         return True
@@ -1390,8 +1423,9 @@ class SpiderFootWebUi:
         """
         # Handle array parameters from CherryPy
         if isinstance(usecase, list):
-            # Use the value from the radio button (first element), not the hidden field
-            usecase = usecase[0] if usecase else ""
+            # Filter out duplicates and use the first unique value
+            unique_values = list(dict.fromkeys(usecase))
+            usecase = unique_values[0] if unique_values else ""
         
         # Debug logging - raw values
         self.log.info(f"startscan RAW params: scanname='{scanname}', scantarget='{scantarget}', "
@@ -1500,6 +1534,8 @@ class SpiderFootWebUi:
             p = mp.Process(target=startSpiderFootScanner, args=(self.loggingQueue, scanname, scanId, scantarget, targetType, modlist, cfg))
             p.daemon = True
             p.start()
+            # Close the process handle to avoid resource leak
+            p.close()
         except Exception as e:
             self.log.error(f"[-] Scan [{scanId}] failed: {e}")
             return self.error(f"[-] Scan [{scanId}] failed: {e}")

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/smicallef/spiderfoot/master/LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.8+-green)](https://www.python.org)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/your-repo/spiderfoot-be)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://github.com/your-repo/spiderfoot-be)
 [![Edition](https://img.shields.io/badge/edition-BAT%20INTELLIGENCE-purple.svg)](https://github.com/your-repo/spiderfoot-be)
 [![Async Framework](https://img.shields.io/badge/async-enabled-orange.svg)](https://github.com/your-repo/spiderfoot-be)
 
@@ -22,6 +22,20 @@ Like bats using echolocation to navigate in darkness, SpiderFoot BE uses **intel
 - **Smart Batching**: Intelligent API call optimization  
 - **Advanced Caching**: Eliminate redundant operations
 - **5-50x Faster**: Dramatic speed improvements over traditional tools
+
+---
+
+## 🚨 **What's New in v0.2.1**
+
+### 🐛 **Critical Bug Fixes**
+- **Fixed multiprocessing semaphore memory leak**: Process handles are now properly closed after spawning scan processes
+- **Fixed usecase parameter duplication**: Resolved issue where usecase parameter was sent twice (`['all', 'all']`)
+- **Enhanced error logging**: Added detailed error messages for better debugging
+
+### 🔧 **WebUI Improvements**
+- **Module category system**: Full integration of `module_categories.json` for better module organization
+- **Improved error handling**: More specific error messages and logging throughout the WebUI
+- **Resource management**: Better cleanup of multiprocessing resources
 
 ---
 
