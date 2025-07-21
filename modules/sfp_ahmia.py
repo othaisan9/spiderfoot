@@ -142,12 +142,25 @@ class sfp_ahmia(SpiderFootPlugin):
                 self.notifyListeners(evt)
                 continue
 
-            res = self.sf.fetchUrl(
-                link,
-                timeout=self.opts['_fetchtimeout'],
-                useragent=self.opts['_useragent'],
-                verify=False
-            )
+            # Check if SOCKS proxy is configured for .onion domains
+            if not self.opts.get('_socks2addr'):
+                self.info(f"Found .onion link but SOCKS proxy not configured: {link}")
+                evt = SpiderFootEvent("DARKNET_MENTION_URL", link, self.__name__, event)
+                self.notifyListeners(evt)
+                continue
+            
+            try:
+                res = self.sf.fetchUrl(
+                    link,
+                    timeout=self.opts['_fetchtimeout'],
+                    useragent=self.opts['_useragent'],
+                    verify=False
+                )
+            except Exception as e:
+                self.debug(f"Failed to fetch {link}: {e}")
+                evt = SpiderFootEvent("DARKNET_MENTION_URL", link, self.__name__, event)
+                self.notifyListeners(evt)
+                continue
 
             if res['content'] is None:
                 self.debug(f"Ignoring {link} as no data returned")

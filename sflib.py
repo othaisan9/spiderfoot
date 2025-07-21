@@ -1286,6 +1286,14 @@ class SpiderFoot:
         if parsed_url.scheme != 'http' and parsed_url.scheme != 'https':
             self.debug(f"Invalid URL scheme for URL: {url}")
             return None
+        
+        # Check if this is an .onion domain
+        if parsed_url.hostname and parsed_url.hostname.endswith('.onion'):
+            if not self.socksProxy:
+                self.error(f"Cannot fetch .onion URL without SOCKS proxy: {url}")
+                return None
+            # Force proxy for .onion domains
+            self.debug(f"Detected .onion domain, forcing SOCKS proxy usage")
 
         request_log = []
 
