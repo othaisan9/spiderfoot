@@ -914,7 +914,7 @@
             <button class="btn btn-xs btn-default" onclick="toggleConsoleLog()">Hide</button>
         </div>
     </div>
-    <div id="console-log-content" class="console-log-content" style="height: calc(100% - 40px); overflow-y: auto; padding: 10px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; background-color: #1e1e1e; color: #ddd;">
+    <div id="console-log-content" class="console-log-content" style="height: calc(100% - 40px); overflow-y: auto; padding: 10px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12px; background-color: #0c0c0c; color: #ddd; line-height: 1.4;">
         <!-- Log entries will be added here -->
     </div>
 </div>
@@ -949,7 +949,7 @@
             clearInterval(consoleLogInterval);
         }
         fetchConsoleLogs();
-        consoleLogInterval = setInterval(fetchConsoleLogs, 2000);
+        consoleLogInterval = setInterval(fetchConsoleLogs, 1000);  // Faster update for streaming effect
     }
     
     function stopConsoleLog() {
@@ -959,15 +959,17 @@
     }
     
     var processedLogIds = new Set();
+    var lastTimestamp = null;
     
     function fetchConsoleLogs() {
-        sf.fetchData('${docroot}/scanlog', {'id': '${id}', 'limit': 100, 'reverse': '1'}, function(data) {
+        // Fetch logs in chronological order (oldest first)
+        sf.fetchData('${docroot}/scanlog', {'id': '${id}', 'limit': 500}, function(data) {
             var logContent = $("#console-log-content");
             var autoScroll = $("#console-autoscroll").is(":checked");
-            var shouldScroll = autoScroll || (logContent[0].scrollHeight - logContent[0].scrollTop <= logContent[0].clientHeight + 10);
+            var isAtBottom = logContent[0].scrollHeight - logContent[0].scrollTop <= logContent[0].clientHeight + 10;
             
-            // Process logs in reverse order (newest first)
-            for (var i = data.length - 1; i >= 0; i--) {
+            // Process logs in chronological order for streaming effect
+            for (var i = 0; i < data.length; i++) {
                 var logEntry = data[i];
                 var timestamp = logEntry[0];
                 var component = logEntry[1];
@@ -975,21 +977,27 @@
                 var message = logEntry[3];
                 
                 var colorClass = "";
+                var levelSymbol = "";
                 switch(level) {
                     case "ERROR":
                         colorClass = "color: #ff6b6b;";
+                        levelSymbol = "✗";
                         break;
                     case "WARNING":
                         colorClass = "color: #ffa500;";
+                        levelSymbol = "⚠";
                         break;
                     case "INFO":
                         colorClass = "color: #4ecdc4;";
+                        levelSymbol = "ℹ";
                         break;
                     case "DEBUG":
-                        colorClass = "color: #888;";
+                        colorClass = "color: #666;";
+                        levelSymbol = "●";
                         break;
                     default:
                         colorClass = "color: #ddd;";
+                        levelSymbol = "•";
                 }
                 
                 // Create unique ID for this log entry
@@ -1001,20 +1009,24 @@
                 }
                 processedLogIds.add(logId);
                 
-                var logHtml = '<div style="margin: 2px 0; ' + colorClass + '" data-logid="' + logId + '">' +
-                    '<span style="color: #666;">' + timestamp + '</span> ' +
-                    '<span style="color: #95a5a6;">[' + component + ']</span> ' +
-                    '<span style="font-weight: bold;">' + level + ':</span> ' +
+                // Format timestamp to show only time
+                var timeOnly = timestamp.split(' ')[1] || timestamp;
+                
+                var logHtml = '<div style="margin: 1px 0; ' + colorClass + ' font-size: 11px;" data-logid="' + logId + '">' +
+                    '<span style="color: #555; font-size: 10px;">' + timeOnly + '</span> ' +
+                    '<span style="' + colorClass + '">' + levelSymbol + '</span> ' +
+                    '<span style="color: #888; font-size: 10px;">[' + component + ']</span> ' +
                     '<span>' + $('<div>').text(message).html() + '</span>' +
                     '</div>';
                 
-                logContent.prepend(logHtml);  // Add to top
+                logContent.append(logHtml);  // Add to bottom for streaming effect
             }
             
-            // Keep only the last 200 entries
+            // Keep only the last 500 entries
             var allEntries = logContent.children();
-            if (allEntries.length > 200) {
-                allEntries.slice(200).remove();
+            if (allEntries.length > 500) {
+                // Remove oldest entries from the top
+                allEntries.slice(0, allEntries.length - 500).remove();
                 
                 // Clean up processedLogIds to prevent memory leak
                 var remainingIds = new Set();
@@ -1025,10 +1037,12 @@
                 processedLogIds = remainingIds;
             }
             
-            // Auto-scroll if enabled or if user was already at bottom
-            if (shouldScroll) {
-                // Scroll to top since logs are prepended
-                logContent.scrollTop(0);
+            // Auto-scroll to bottom if enabled or if user was already at bottom
+            if (autoScroll || isAtBottom) {
+                // Smooth scroll to bottom
+                logContent.stop().animate({
+                    scrollTop: logContent[0].scrollHeight
+                }, 300);
             }
         });
     }
