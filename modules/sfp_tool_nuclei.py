@@ -101,6 +101,11 @@ class sfp_tool_nuclei(SpiderFootPlugin):
             self.errorState = True
             return
 
+        # Check if we've already processed this exact target
+        if eventData in self.results:
+            self.debug(f"Already processed {eventData}, skipping")
+            return
+
         exe = self.opts['nuclei_path']
         if self.opts['nuclei_path'].endswith('/'):
             exe = f"{exe}nuclei"
@@ -137,7 +142,10 @@ class sfp_tool_nuclei(SpiderFootPlugin):
 
         self.results[eventData] = True
 
-        timeout = 240
+        # Reduce timeout and add rate limiting
+        timeout = 30  # Further reduced timeout to prevent long waits
+        max_targets = 20  # Further limit number of IPs to scan at once
+        
         try:
             target = eventData
             if eventName == "NETBLOCK_OWNER" and self.opts['netblockscan']:
@@ -149,51 +157,92 @@ class sfp_tool_nuclei(SpiderFootPlugin):
 
                 # Nuclei doesn't support targeting subnets directly,
                 # so for now work around that by listing each IP.
-                for addr in IPNetwork(eventData).iter_hosts():
+                hosts = list(IPNetwork(eventData).iter_hosts())
+                
+                # Limit the number of targets to prevent excessive timeouts
+                if len(hosts) > max_targets:
+                    self.info(f"Network has {len(hosts)} hosts, limiting scan to first {max_targets}")
+                    hosts = hosts[:max_targets]
+                
+                for addr in hosts:
                     target += str(addr) + "\n"
-                    timeout += 240
+                
+                # Set reasonable timeout based on number of hosts
+                timeout = min(120, 30 + (len(hosts) * 2))  # Max 2 minutes
         except BaseException as e:
             self.error(f"Strange netblock identified, unable to parse: {eventData} ({e})")
             return
 
-        try:
-            args = [
-                exe,
-                "-silent",
-                "-jsonl",  # Changed from -json to -jsonl
-                "-concurrency",
-                "100",
-                "-retries",
-                "1",
-                "-t",
-                self.opts["template_path"],
-                "-no-interactsh",
-                "-etags",
-                "dos",
-                "fuzz",
-                "misc",
-            ]
-            p = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        # Try to run Nuclei with improved settings and retry logic
+        max_retries = 2  # Reduced from 3 to 2
+        retry_count = 0
+        content = ""
+        
+        while retry_count < max_retries:
             try:
-                stdout, stderr = p.communicate(input=target.encode(sys.stdin.encoding), timeout=timeout)
-                if p.returncode == 0:
-                    content = stdout.decode(sys.stdout.encoding)
-                else:
-                    stderr_text = stderr.decode(sys.stderr.encoding) if stderr else "No stderr"
-                    stdout_text = stdout.decode(sys.stdout.encoding) if stdout else "No stdout"
-                    self.error(f"Nuclei returned error code {p.returncode}")
-                    self.error(f"Nuclei stderr: {stderr_text}")
-                    self.error(f"Nuclei stdout: {stdout_text}")
-                    self.error(f"Nuclei command: {' '.join(args)}")
-                    return
-            except TimeoutExpired:
-                p.kill()
-                stdout, stderr = p.communicate()
-                self.debug("Timed out waiting for Nuclei to finish")
+                args = [
+                    exe,
+                    "-silent",
+                    "-jsonl",  # Changed from -json to -jsonl
+                    "-concurrency",
+                    "10",  # Reduced from 100 to prevent overload
+                    "-rate-limit",
+                    "10",  # Add rate limiting
+                    "-timeout",
+                    "5",  # Reduced per-request timeout
+                    "-retries",
+                    "0",  # No retries at nuclei level
+                    "-t",
+                    self.opts["template_path"],
+                    "-no-interactsh",
+                    "-etags",
+                    "dos",
+                    "fuzz",
+                    "misc",
+                ]
+                
+                self.info(f"Running Nuclei scan on {eventData} (attempt {retry_count + 1}/{max_retries})")
+                
+                p = Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+                try:
+                    stdout, stderr = p.communicate(input=target.encode(sys.stdin.encoding), timeout=timeout)
+                    if p.returncode == 0:
+                        content = stdout.decode(sys.stdout.encoding)
+                        break  # Success, exit retry loop
+                    else:
+                        stderr_text = stderr.decode(sys.stderr.encoding) if stderr else "No stderr"
+                        stdout_text = stdout.decode(sys.stdout.encoding) if stdout else "No stdout"
+                        self.error(f"Nuclei returned error code {p.returncode}")
+                        self.error(f"Nuclei stderr: {stderr_text}")
+                        self.error(f"Nuclei stdout: {stdout_text}")
+                        
+                        # Only retry on certain error codes
+                        if p.returncode in [1, 137, 143]:  # Common retriable errors
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                self.info(f"Retrying Nuclei scan...")
+                                continue
+                        return
+                except TimeoutExpired:
+                    p.kill()
+                    stdout, stderr = p.communicate()
+                    self.info(f"Nuclei scan timed out after {timeout} seconds")
+                    
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        # Try with smaller timeout on retry
+                        timeout = max(30, timeout // 2)
+                        self.info(f"Retrying with reduced timeout: {timeout}s")
+                        continue
+                    else:
+                        self.debug("Max retries reached for Nuclei scan")
+                        return
+            except BaseException as e:
+                self.error(f"Unable to run Nuclei: {e}")
                 return
-        except BaseException as e:
-            self.error(f"Unable to run Nuclei: {e}")
-            return
+            
+            # If we reach here without content, break to avoid infinite loop
+            break
 
         if not content:
             return
@@ -211,12 +260,29 @@ class sfp_tool_nuclei(SpiderFootPlugin):
                     if host in self.results:
                         self.debug(f"Skipping {host} as already processed")
                         continue
-                    self.results[host] = True
                     
+                    # Only create events for valid, non-generic hosts
                     if self.sf.validIP(host):
                         srctype = "IP_ADDRESS"
                     else:
+                        # Skip common CDN/cloud hostnames that cause loops
+                        skip_patterns = [
+                            'outlook.com',
+                            'office365.com',
+                            'cloudflare',
+                            'akamai',
+                            'amazonaws.com',
+                            'azure',
+                            'google',
+                            'facebook'
+                        ]
+                        if any(pattern in host.lower() for pattern in skip_patterns):
+                            self.debug(f"Skipping cloud/CDN host: {host}")
+                            continue
                         srctype = "INTERNET_NAME"
+                    
+                    # Mark as processed before creating event
+                    self.results[host] = True
                     srcevent = SpiderFootEvent(srctype, host, self.__name__, event)
                     self.notifyListeners(srcevent)
 
