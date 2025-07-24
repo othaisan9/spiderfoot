@@ -1,0 +1,5 @@
+# Minimal Privoxy Filter File for SpiderFoot
+# This file is intentionally empty as we don't need content filtering
+# for basic proxy functionality
+#
+# SpiderFoot uses Privoxy purely as an HTTP-to-SOCKS5 proxy converter

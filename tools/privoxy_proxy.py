@@ -34,7 +34,8 @@ class PrivoxyProxy:
                  http_port: int = 8118,
                  forward_socks_port: Optional[int] = 9050,
                  config_dir: Optional[str] = None,
-                 log_level: str = "INFO"):
+                 log_level: str = "INFO",
+                 use_system_config: bool = False):
         """
         Initialize Privoxy proxy manager
         
@@ -43,12 +44,27 @@ class PrivoxyProxy:
             forward_socks_port: Forward to SOCKS5 port, None for direct (default: 9050 for Tor)
             config_dir: Directory for Privoxy config (default: temp directory)
             log_level: Logging level (default: INFO)
+            use_system_config: Use system Privoxy config files if available (default: False)
         """
         self.http_port = http_port
         self.forward_socks_port = forward_socks_port
-        self.config_dir = config_dir or tempfile.mkdtemp(prefix="privoxy_config_")
+        self.use_system_config = use_system_config
+        
+        # Use a directory in the user's home instead of /tmp
+        if config_dir:
+            self.config_dir = config_dir
+        else:
+            # Create config directory in user's home
+            home_dir = os.path.expanduser("~")
+            privoxy_dir = os.path.join(home_dir, ".spiderfoot", "privoxy")
+            os.makedirs(privoxy_dir, exist_ok=True)
+            self.config_dir = tempfile.mkdtemp(prefix="config_", dir=privoxy_dir)
+        
         self.privoxy_process = None
         self.config_file = None
+        
+        # Path to bundled Privoxy files
+        self.bundle_dir = os.path.join(os.path.dirname(__file__), 'privoxy')
         
         # Setup logging
         logging.basicConfig(
@@ -123,6 +139,25 @@ class PrivoxyProxy:
             time.sleep(0.5)
         return False
     
+    def _get_bundled_file_path(self, filename: str) -> str:
+        """Get path to bundled Privoxy file"""
+        # Get the directory where this module is located
+        module_dir = os.path.dirname(os.path.abspath(__file__))
+        bundled_path = os.path.join(module_dir, 'privoxy', filename)
+        
+        # Check if bundled file exists
+        if os.path.exists(bundled_path):
+            return bundled_path
+        
+        # Fallback to system file if available
+        system_path = os.path.join('/etc/privoxy', filename)
+        if os.path.exists(system_path):
+            self.logger.info(f"Using system file: {system_path}")
+            return system_path
+        
+        # Return bundled path anyway (will cause error if missing)
+        return bundled_path
+    
     def _generate_config(self) -> str:
         """Generate Privoxy configuration"""
         config_lines = [
@@ -163,8 +198,8 @@ class PrivoxyProxy:
             "# Privacy settings",
             "hostname privoxy.spiderfoot",
             "",
-            "# Disable Privoxy info page",
-            "toggle 0",
+            "# Enable Privoxy",
+            "toggle 1",
             "",
             "# Accept intercepted requests",
             "accept-intercepted-requests 1",
@@ -172,18 +207,48 @@ class PrivoxyProxy:
             "# Allow all clients from localhost",
             "permit-access 127.0.0.1",
             "",
-            "# Custom headers for anonymity",
-            "hide-forwarded-for-headers 1",
-            "hide-from-header 1",
-            "hide-referrer 1",
-            "hide-user-agent 0",  # Don't hide UA, let client control it
+        ])
+        
+        # Add filter and action files based on configuration
+        if self.use_system_config and os.path.exists('/etc/privoxy/default.filter'):
+            # Use system files if requested and available
+            config_lines.extend([
+                "# Filter settings (using system files)",
+                "filterfile /etc/privoxy/default.filter",
+                f"filterfile {os.path.join(self.config_dir, 'user.filter')}",
+                "",
+                "# Action files (using system files)",
+                "actionsfile /etc/privoxy/default.action",
+                "actionsfile /etc/privoxy/match-all.action",
+                f"actionsfile {os.path.join(self.config_dir, 'user.action')}",
+            ])
+        else:
+            # Use bundled minimal files or no files at all
+            if os.path.exists(self.bundle_dir):
+                # Copy bundled files to config directory
+                config_lines.extend([
+                    "# Filter settings (using bundled minimal files)",
+                    f"filterfile {os.path.join(self.config_dir, 'minimal.filter')}",
+                    f"filterfile {os.path.join(self.config_dir, 'user.filter')}",
+                    "",
+                    "# Action files (using bundled minimal files)",
+                    f"actionsfile {os.path.join(self.config_dir, 'minimal.action')}",
+                    f"actionsfile {os.path.join(self.config_dir, 'user.action')}",
+                ])
+            else:
+                # No filter/action files - pure proxy mode
+                # Note: Privoxy requires at least one action file to function
+                # We'll create a minimal one on the fly
+                config_lines.extend([
+                    "# Minimal configuration - pure HTTP proxy mode",
+                    "# Creating minimal action file for basic operation",
+                    f"actionsfile {os.path.join(self.config_dir, 'minimal.action')}",
+                ])
+        
+        config_lines.extend([
             "",
             "# Compression",
             "compression-level 0",
-            "",
-            "# No filtering by default",
-            "filterfile user.filter",
-            "actionsfile user.action",
             "",
             "# Logging",
             "debug 1",  # Log errors only
@@ -205,10 +270,40 @@ class PrivoxyProxy:
         with open(filter_file, 'w') as f:
             f.write("# User filter file\n")
             f.write("# Add custom filters here\n")
+        
+        # Create minimal.action if it doesn't exist (fallback)
+        minimal_action = os.path.join(self.config_dir, 'minimal.action')
+        if not os.path.exists(minimal_action):
+            with open(minimal_action, 'w') as f:
+                f.write("# Minimal action file\n")
+                f.write("# This allows Privoxy to function as a basic HTTP proxy\n")
+                f.write("{}\n")  # Empty action block
+                f.write("/\n")   # Match all URLs
     
     def start(self) -> bool:
         """Start the Privoxy HTTP proxy service"""
         try:
+            # First check if the desired port is already in use (system Privoxy)
+            if self._is_port_open(self.http_port):
+                self.logger.info(f"Port {self.http_port} is already in use. Testing existing proxy...")
+                
+                # Test if it's a working proxy
+                if self.test_connection():
+                    self.logger.info(f"Existing proxy on port {self.http_port} is working correctly.")
+                    self.logger.info("Using existing proxy instead of starting a new instance.")
+                    return True
+                else:
+                    self.logger.warning(f"Port {self.http_port} is in use but proxy test failed.")
+                    self.logger.info("The existing service might not be configured as a proxy.")
+                    
+                    # If it's the default port, suggest using a different port
+                    if self.http_port == 8118:
+                        self.logger.info("Consider using a different port (e.g., 8119) to avoid conflicts.")
+                        return False
+                    else:
+                        self.logger.error(f"Cannot start Privoxy on port {self.http_port} - already in use.")
+                        return False
+            
             # Check if Privoxy is installed
             if not self.check_privoxy_installed():
                 self.logger.warning("Privoxy not found. Attempting to install...")
@@ -220,8 +315,22 @@ class PrivoxyProxy:
                                   "Starting without forwarding (direct connection).")
                 self.forward_socks_port = None
             
-            # Create config directory
-            Path(self.config_dir).mkdir(parents=True, exist_ok=True)
+            # Create config directory with proper permissions
+            Path(self.config_dir).mkdir(parents=True, exist_ok=True, mode=0o755)
+            
+            # Copy bundled files if they exist and we're not using system config
+            if not self.use_system_config and os.path.exists(self.bundle_dir):
+                # Copy minimal action file
+                minimal_action = os.path.join(self.bundle_dir, 'minimal.action')
+                if os.path.exists(minimal_action):
+                    shutil.copy2(minimal_action, os.path.join(self.config_dir, 'minimal.action'))
+                    self.logger.info("Copied bundled minimal.action file")
+                
+                # Copy minimal filter file
+                minimal_filter = os.path.join(self.bundle_dir, 'minimal.filter')
+                if os.path.exists(minimal_filter):
+                    shutil.copy2(minimal_filter, os.path.join(self.config_dir, 'minimal.filter'))
+                    self.logger.info("Copied bundled minimal.filter file")
             
             # Generate configuration
             config_content = self._generate_config()
@@ -230,8 +339,19 @@ class PrivoxyProxy:
             with open(self.config_file, 'w') as f:
                 f.write(config_content)
             
+            # Set proper permissions on config file
+            os.chmod(self.config_file, 0o644)
+            
             # Create empty action and filter files
             self._create_empty_files()
+            
+            # Set permissions on action and filter files
+            action_file = os.path.join(self.config_dir, 'user.action')
+            filter_file = os.path.join(self.config_dir, 'user.filter')
+            if os.path.exists(action_file):
+                os.chmod(action_file, 0o644)
+            if os.path.exists(filter_file):
+                os.chmod(filter_file, 0o644)
             
             self.logger.info(f"Starting Privoxy on HTTP port {self.http_port}...")
             
@@ -275,7 +395,7 @@ class PrivoxyProxy:
                 self.privoxy_process = None
             
             # Clean up config directory
-            if os.path.exists(self.config_dir) and self.config_dir.startswith(tempfile.gettempdir()):
+            if os.path.exists(self.config_dir) and "config_" in os.path.basename(self.config_dir):
                 shutil.rmtree(self.config_dir, ignore_errors=True)
             
             self.logger.info("Privoxy stopped successfully")
@@ -300,7 +420,12 @@ class PrivoxyProxy:
                 ip_data = response.json()
                 self.logger.info(f"Proxy test successful. IP: {ip_data.get('origin', 'unknown')}")
                 return True
+            elif response.status_code == 503:
+                # System Privoxy might be configured to not accept proxy requests
+                self.logger.warning("Proxy returned 503 - it may not be configured to accept requests")
+                return False
             else:
+                self.logger.warning(f"Proxy test failed with status code: {response.status_code}")
                 return False
                 
         except Exception as e:
@@ -348,7 +473,8 @@ class TorHttpProxy:
                  socks_port: int = 9050,
                  tor_control_port: int = 9051,
                  data_dir: Optional[str] = None,
-                 log_level: str = "INFO"):
+                 log_level: str = "INFO",
+                 use_system_config: bool = False):
         """
         Initialize combined Tor + Privoxy proxy
         
@@ -358,6 +484,7 @@ class TorHttpProxy:
             tor_control_port: Tor control port (default: 9051)
             data_dir: Directory for data (default: temp directory)
             log_level: Logging level (default: INFO)
+            use_system_config: Use system Privoxy config files if available (default: False)
         """
         # Import tor_proxy module
         from tools.tor_proxy import TorProxy
@@ -372,7 +499,8 @@ class TorHttpProxy:
         self.privoxy_proxy = PrivoxyProxy(
             http_port=http_port,
             forward_socks_port=socks_port,
-            log_level=log_level
+            log_level=log_level,
+            use_system_config=use_system_config
         )
         
         self.logger = logging.getLogger(__name__)
@@ -439,6 +567,7 @@ def main():
     parser.add_argument('--with-tor', action='store_true', help='Run with integrated Tor')
     parser.add_argument('--test', action='store_true', help='Test mode')
     parser.add_argument('--daemon', action='store_true', help='Run as daemon')
+    parser.add_argument('--use-system-config', action='store_true', help='Use system Privoxy config files from /etc/privoxy')
     
     args = parser.parse_args()
     
@@ -447,7 +576,8 @@ def main():
         print("Starting Tor + Privoxy HTTP proxy...")
         proxy = TorHttpProxy(
             http_port=args.http_port,
-            socks_port=args.socks_port
+            socks_port=args.socks_port,
+            use_system_config=args.use_system_config
         )
         
         if proxy.start():
@@ -504,7 +634,8 @@ def main():
         # Privoxy only mode
         proxy = PrivoxyProxy(
             http_port=args.http_port,
-            forward_socks_port=None if args.no_tor else args.socks_port
+            forward_socks_port=None if args.no_tor else args.socks_port,
+            use_system_config=args.use_system_config
         )
         
         if args.test:

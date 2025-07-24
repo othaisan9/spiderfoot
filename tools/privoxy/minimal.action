@@ -1,0 +1,8 @@
+# Minimal Privoxy Action File for SpiderFoot
+# This file provides basic proxy functionality without content filtering
+# 
+# The following line matches all URLs and applies no actions (pure proxy mode)
+# This is sufficient for basic HTTP/HTTPS proxying through Tor
+
+{}
+/

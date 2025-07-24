@@ -29,7 +29,7 @@ class SpiderFootLauncher:
     
     def __init__(self, use_tor=True, use_privoxy=True, 
                  socks_port=9050, http_port=8118, 
-                 sf_port=5001, sf_host='127.0.0.1'):
+                 sf_port=5001, sf_host='0.0.0.0'):
         self.use_tor = use_tor
         self.use_privoxy = use_privoxy
         self.socks_port = socks_port
@@ -242,8 +242,8 @@ def main():
                       help='Privoxy HTTP 포트 (기본값: 8118)')
     parser.add_argument('--sf-port', type=int, default=5001,
                       help='SpiderFoot 웹 포트 (기본값: 5001)')
-    parser.add_argument('--sf-host', default='127.0.0.1',
-                      help='SpiderFoot 호스트 (기본값: 127.0.0.1)')
+    parser.add_argument('--sf-host', default='0.0.0.0',
+                      help='SpiderFoot 호스트 (기본값: 0.0.0.0)')
     
     # SpiderFoot 모드
     parser.add_argument('--cli', action='store_true',
