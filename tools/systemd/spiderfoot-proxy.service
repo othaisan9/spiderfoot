@@ -1,0 +1,24 @@
+[Unit]
+Description=SpiderFoot with Tor and Privoxy Proxy
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/wynne/othaisan/Spierfoot_BE/spiderfoot
+ExecStart=/usr/bin/python3 /home/wynne/othaisan/Spierfoot_BE/spiderfoot/start_spiderfoot_with_proxy.py
+Restart=on-failure
+RestartSec=10
+
+# 보안 설정
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/wynne/othaisan/Spierfoot_BE/spiderfoot
+
+# 환경 변수
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

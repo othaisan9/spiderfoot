@@ -34,15 +34,47 @@ class sfp_tldsearch(SpiderFootPlugin):
     opts = {
         'activeonly': False,  # Only report domains that have content (try to fetch the page)
         'skipwildcards': True,
-        '_maxthreads': 50
+        'use_priority_tlds': True,  # Use curated list for phishing detection
+        'check_all_tlds': False,     # Option to check all TLDs
+        'max_tlds': 100,             # Maximum TLDs to check when not using priority list
+        '_maxthreads': 20
     }
 
     # Option descriptions
     optdescs = {
         'activeonly': "Only report domains that have content (try to fetch the page)?",
         "skipwildcards": "Skip TLDs and sub-TLDs that have wildcard DNS.",
+        'use_priority_tlds': "Use curated list of high-risk TLDs for phishing detection?",
+        'check_all_tlds': "Check all available TLDs (very slow)?",
+        'max_tlds': "Maximum number of TLDs to check when not using priority list.",
         "_maxthreads": "Maximum threads"
     }
+
+    # High-risk TLDs commonly used for phishing
+    PHISHING_PRIORITY_TLDS = [
+        # Major gTLDs
+        'com', 'net', 'org', 'info', 'biz', 'co',
+        
+        # New gTLDs often used in phishing
+        'online', 'site', 'website', 'tech', 'store', 
+        'shop', 'app', 'cloud', 'io', 'ai', 'dev',
+        'xyz', 'top', 'icu', 'buzz', 'live', 'club',
+        
+        # Free/cheap TLDs commonly abused
+        'tk', 'ml', 'ga', 'cf', 'click', 'download',
+        
+        # Country TLDs with lax policies
+        'cn', 'ru', 'in', 'br', 'cc', 'ws', 'to',
+        
+        # Korean TLDs
+        'kr', 'co.kr', 'or.kr', 'com.kr', 'ne.kr',
+        
+        # Financial sector targeted TLDs
+        'finance', 'money', 'loan', 'credit', 'bank',
+        
+        # Tech-related (for tech company impersonation)
+        'systems', 'network', 'support', 'security'
+    ]
 
     # Internal results tracking
     results = None
@@ -69,6 +101,39 @@ class sfp_tldsearch(SpiderFootPlugin):
     # produced.
     def producedEvents(self):
         return ["SIMILARDOMAIN"]
+
+    def getTldList(self):
+        """Get the list of TLDs to check based on options."""
+        if self.opts['use_priority_tlds']:
+            self.info(f"Using priority TLD list with {len(self.PHISHING_PRIORITY_TLDS)} entries for phishing detection")
+            return self.PHISHING_PRIORITY_TLDS
+        
+        if self.opts['check_all_tlds']:
+            # Use all TLDs from SpiderFoot config
+            all_tlds = self.opts.get('_internettlds', [])
+            self.info(f"Using all {len(all_tlds)} TLDs (this will be slow)")
+            return all_tlds
+        
+        # Use limited set from all TLDs
+        all_tlds = self.opts.get('_internettlds', [])
+        limit = min(self.opts['max_tlds'], len(all_tlds))
+        # Prioritize common TLDs
+        selected_tlds = []
+        
+        # First add common TLDs if they exist
+        common = ['com', 'net', 'org', 'info', 'biz', 'co', 'io', 'app']
+        for tld in common:
+            if tld in all_tlds and tld not in selected_tlds:
+                selected_tlds.append(tld)
+        
+        # Fill the rest randomly
+        remaining = [t for t in all_tlds if t not in selected_tlds]
+        while len(selected_tlds) < limit and remaining:
+            idx = random.randint(0, len(remaining) - 1)
+            selected_tlds.append(remaining.pop(idx))
+        
+        self.info(f"Using {len(selected_tlds)} selected TLDs")
+        return selected_tlds
 
     def tryTld(self, target, tld):
         resolver = dns.resolver.Resolver()
@@ -98,7 +163,7 @@ class sfp_tldsearch(SpiderFootPlugin):
         t = []
 
         # Spawn threads for scanning
-        self.info(f"Spawning threads to check TLDs: {tldList}")
+        self.info(f"Spawning threads to check TLDs: {len(tldList)} domains")
         for i, pair in enumerate(tldList):
             (domain, tld) = pair
             tn = 'thread_sfp_tldsearch_' + str(random.SystemRandom().randint(0, 999999999))
@@ -167,9 +232,12 @@ class sfp_tldsearch(SpiderFootPlugin):
 
         self.results[keyword] = True
 
-        # Look through all TLDs for the existence of this target keyword
+        # Get TLD list based on configuration
+        tld_list = self.getTldList()
+        
+        # Look through selected TLDs for the existence of this target keyword
         targetList = list()
-        for tld in self.opts['_internettlds']:
+        for tld in tld_list:
             if type(tld) != str:
                 tld = str(tld.strip(), errors='ignore')
             else:

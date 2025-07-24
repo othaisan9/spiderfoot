@@ -112,7 +112,7 @@ class sfp_spider(SpiderFootPlugin):
 
         # Filter out certain file types (if user chooses to)
         if list(filter(lambda ext: url.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
-            # self.debug(f"Ignoring URL with filtered file extension: {link}")
+            # self.debug(f"Ignoring URL with filtered file extension: {url}")
             return None
 
         if site in self.siteCookies:
@@ -120,14 +120,18 @@ class sfp_spider(SpiderFootPlugin):
             cookies = self.siteCookies[site]
 
         # Fetch the contents of the supplied URL
-        fetched = self.sf.fetchUrl(
-            url,
-            cookies=cookies,
-            timeout=self.opts['_fetchtimeout'],
-            useragent=self.opts['_useragent'],
-            sizeLimit=10000000,
-            verify=False
-        )
+        try:
+            fetched = self.sf.fetchUrl(
+                url,
+                cookies=cookies,
+                timeout=self.opts['_fetchtimeout'],
+                useragent=self.opts['_useragent'],
+                sizeLimit=10000000,
+                verify=False
+            )
+        except Exception as e:
+            self.error(f"Error fetching URL {url}: {e}")
+            return None
         self.fetchedPages[url] = True
 
         if not fetched:
@@ -200,6 +204,11 @@ class sfp_spider(SpiderFootPlugin):
         returnLinks = dict()
 
         for link in links:
+            # Filter out certain file types first
+            if list(filter(lambda ext: link.lower().split('?')[0].endswith('.' + ext.lower()), self.opts['filterfiles'])):
+                # self.debug(f"Ignoring link with filtered file extension: {link}")
+                continue
+
             linkBase = SpiderFootHelpers.urlBaseUrl(link)
             linkFQDN = self.sf.urlFQDN(link)
 
@@ -226,7 +235,7 @@ class sfp_spider(SpiderFootPlugin):
 
             # If we are respecting robots.txt, filter those out too
             if linkBase in self.robotsRules and self.opts['robotsonly']:
-                if list(filter(lambda blocked: type(blocked).lower(blocked) in link.lower() or blocked == '*', self.robotsRules[linkBase])):
+                if list(filter(lambda blocked: blocked.lower() in link.lower() or blocked == '*', self.robotsRules[linkBase])):
                     # self.debug("Ignoring page found in robots.txt: " + link)
                     continue
 
@@ -267,9 +276,15 @@ class sfp_spider(SpiderFootPlugin):
         headers = httpresult.get('headers')
 
         if headers:
+            try:
+                headers_json = json.dumps(headers, ensure_ascii=False)
+            except Exception as e:
+                self.error(f"Error serializing headers to JSON: {e}")
+                headers_json = "{}"
+            
             event = SpiderFootEvent(
                 "WEBSERVER_HTTPHEADERS",
-                json.dumps(headers, ensure_ascii=False),
+                headers_json,
                 self.__name__,
                 parentEvent
             )
@@ -325,12 +340,16 @@ class sfp_spider(SpiderFootPlugin):
         # Determine where to start spidering from if it's a INTERNET_NAME event
         if eventName == "INTERNET_NAME":
             for prefix in self.opts['start']:
-                res = self.sf.fetchUrl(
-                    prefix + eventData,
-                    timeout=self.opts['_fetchtimeout'],
-                    useragent=self.opts['_useragent'],
-                    verify=False
-                )
+                try:
+                    res = self.sf.fetchUrl(
+                        prefix + eventData,
+                        timeout=self.opts['_fetchtimeout'],
+                        useragent=self.opts['_useragent'],
+                        verify=False
+                    )
+                except Exception as e:
+                    self.error(f"Error fetching URL {prefix + eventData}: {e}")
+                    res = None
 
                 if not res:
                     continue
@@ -366,12 +385,16 @@ class sfp_spider(SpiderFootPlugin):
         if self.opts['robotsonly']:
             targetBase = SpiderFootHelpers.urlBaseUrl(startingPoint)
             if targetBase not in self.robotsRules:
-                res = self.sf.fetchUrl(
-                    targetBase + '/robots.txt',
-                    timeout=self.opts['_fetchtimeout'],
-                    useragent=self.opts['_useragent'],
-                    verify=False
-                )
+                try:
+                    res = self.sf.fetchUrl(
+                        targetBase + '/robots.txt',
+                        timeout=self.opts['_fetchtimeout'],
+                        useragent=self.opts['_useragent'],
+                        verify=False
+                    )
+                except Exception as e:
+                    self.error(f"Error fetching robots.txt from {targetBase}: {e}")
+                    res = None
                 if res:
                     robots_txt = res['content']
                     if robots_txt:

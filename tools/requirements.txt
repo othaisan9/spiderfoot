@@ -1,0 +1,28 @@
+# SpiderFoot Tor/Privoxy Proxy Tools Requirements
+# Install with: pip install -r tools/requirements.txt
+
+# Core dependencies for Tor proxy management
+stem>=1.8.0          # Tor controller library
+PySocks>=1.7.1       # SOCKS proxy support
+
+# HTTP requests and networking
+requests>=2.28.0     # HTTP library with proxy support
+urllib3>=1.26.0      # HTTP client library
+
+# System requirements (must be installed separately):
+# - Tor: https://www.torproject.org/
+#   Ubuntu/Debian: sudo apt-get install tor
+#   macOS: brew install tor
+#   
+# - Privoxy: https://www.privoxy.org/
+#   Ubuntu/Debian: sudo apt-get install privoxy
+#   macOS: brew install privoxy
+
+# Optional dependencies for enhanced functionality
+cryptography>=3.4.8  # For secure communication
+psutil>=5.9.0        # Process management and monitoring
+
+# Development dependencies (optional)
+# pytest>=7.0.0      # Testing framework
+# black>=22.0.0      # Code formatter
+# flake8>=4.0.0      # Linter

@@ -1092,6 +1092,20 @@ class SpiderFoot:
                 'http': self.socksProxy,
                 'https': self.socksProxy,
             }
+        
+        # Configure retry settings: 2 retries with 8 second timeout
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        
+        retry_strategy = Retry(
+            total=2,
+            backoff_factor=0.3,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
         return session
 
     def removeUrlCreds(self, url: str) -> str:
@@ -1192,7 +1206,7 @@ class SpiderFoot:
         self,
         url: str,
         cookies: str = None,
-        timeout: int = 30,
+        timeout: int = 8,
         useragent: str = "SpiderFoot",
         headers: dict = None,
         noLog: bool = False,
